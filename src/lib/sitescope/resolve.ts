@@ -8,6 +8,8 @@ const BASE: ScoringConfig = {
     complementary: 0.15,
     competition: 0.2,
     rent: 0.1,
+    landuse: 0.08,
+    risk: 0.08,
   },
   decayD0: 900,
   competitionMode: "avoid",
@@ -25,6 +27,8 @@ const BUSINESS: Record<
   string,
   { competitors: string[]; complementary: string[]; bump: Partial<Record<LayerId, number>>; label: string }
 > = {
+  ev: { label: "EV charging station", competitors: ["charging_station"], complementary: ["parking", "mall"], bump: { accessibility: 0.25, risk: 0.1, competition: 0.1 } },
+  warehouse: { label: "warehouse", competitors: ["warehouse"], complementary: ["industrial"], bump: { accessibility: 0.25, rent: 0.15, landuse: 0.1 } },
   cafe: {
     label: "café",
     competitors: ["cafe", "coffee_shop", "bakery"],

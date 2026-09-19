@@ -141,10 +141,19 @@ export function MapView({ onBack, onReset }: MapViewProps) {
   const scored = useMemo(() => {
     if (!cityData) return [];
     return scoreCity(cityData, {
-      weights: liveConfigState.weights,
+      weights: { ...liveConfigState.weights },
+      decayD0: liveConfigState.decayD0Km * 1000,
+      competitionMode: liveConfigState.competitionMode === "cluster_bonus" ? "cluster" : "avoid",
+      competitionRadius: liveConfigState.competitionRadiusKm * 1000,
+      competitorCategories: [],
+      complementaryCategories: [],
+      landUseTable: { residential: 0.6, commercial: 1, mixed: 0.85, industrial: 0.25 },
+      isochroneMode: "drive",
+      isochroneMinutes: 20,
+      scale: "medium",
       decay: { type: liveConfigState.decayType, d0_km: liveConfigState.decayD0Km },
       competition: {
-        mode: liveConfigState.competitionMode,
+        mode: liveConfigState.competitionMode === "cluster_bonus" ? "cluster" : "avoid",
         radius_km: liveConfigState.competitionRadiusKm,
         saturation: liveConfigState.competitionSaturation,
       },

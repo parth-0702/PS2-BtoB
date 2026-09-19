@@ -21,6 +21,8 @@ export const QUESTIONS: Question[] = [
     subtitle: "This sets which places count as competitors and which help you.",
     multi: false,
     options: [
+      { id: "ev", label: "EV charging station" },
+      { id: "warehouse", label: "Warehouse / logistics" },
       { id: "cafe", label: "Café / coffee bar" },
       { id: "restaurant", label: "Restaurant" },
       { id: "grocery", label: "Grocery / kirana" },
