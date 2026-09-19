@@ -134,16 +134,19 @@ export function MapView({ onBack, onReset }: MapViewProps) {
 
   const scored = useMemo(() => {
     if (!cityData) return [];
+    const compMode = liveConfigState.competitionMode === "cluster_bonus" ? "cluster" : "avoid";
     return scoreCity(cityData, {
       weights: liveConfigState.weights,
+      decayD0: liveConfigState.decayD0Km * 1000,
       decay:   { type: liveConfigState.decayType, d0_km: liveConfigState.decayD0Km },
+      competitionMode: compMode,
       competition: {
-        mode:       liveConfigState.competitionMode,
+        mode:       compMode,
         radius_km:  liveConfigState.competitionRadiusKm,
         saturation: liveConfigState.competitionSaturation,
       },
       constraints: liveConfigState.constraints,
-    });
+    } as any);
   }, [cityData, liveConfigState]);
 
   const top5 = useMemo(() => topSites(scored, 5), [scored]);

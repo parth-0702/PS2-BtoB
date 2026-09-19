@@ -1,195 +1,83 @@
 import { gridDisk } from "h3-js";
-import type { CityData, HexCell, LayerId, ScoringConfig } from "./types";
+import type { CityData, HexCell, ScoringConfig } from "./types";
 
 export interface ScoredHex {
-  h3: string;
-  center: [number, number];
-  boundary: [number, number][];
-  score: number; // 0..1
-  score100: number; // 0..100 integer
-  eligible: boolean;
-  blockedBy: string[];
+  h3: string; center: [number, number]; boundary: [number, number][];
+  score: number; score100: number; eligible: boolean; blockedBy: string[];
   parts: { layer: string; label: string; weight: number; value: number; contribution: number }[];
-  gi: number; // Gi* z-score
-  gi_z: number;
-  underserved: boolean;
-  underservedScore: number;
-  robustness: "high" | "medium" | "low";
-  raw: HexCell;
-  subscores: {
-    demand: number;
-    accessibility: number;
-    complementary: number;
-    competition: number;
-    landuse: number;
-    risk: number;
-    [key: string]: number;
-  };
-  footfall: number;
-  population: number;
-  accessibility: number;
-  complementary: number;
-  competition: number;
-  landuse: number;
-  rent: number;
-  floodRisk: number;
+  gi: number; gi_z: number; underserved: boolean; underservedScore: number;
+  robustness: "high" | "medium" | "low"; raw: HexCell;
+  subscores: { demand: number; accessibility: number; complementary: number; competition: number; landuse: number; risk: number; [key: string]: number };
+  footfall: number; population: number; accessibility: number; complementary: number;
+  competition: number; landuse: number; rent: number; floodRisk: number;
 }
-
-const LABELS: Record<string, string> = {
-  population: "Demand (Population)",
-  demand: "Demand (Population)",
-  footfall: "Footfall",
-  accessibility: "Accessibility (Transport)",
-  complementary: "Complementary POIs",
-  competition: "Competition",
-  rent: "Rent / Budget",
-  landuse: "Land Suitability",
-  risk: "Risk (Flood & Env)",
+export const FACTORS: Record<string, string> = {
+  population: "Population", demand: "Population", footfall: "Foot traffic", accessibility: "Accessibility",
+  complementary: "Nearby amenities", competition: "Competition", rent: "Affordability", landuse: "Land suitability", risk: "Environmental safety",
 };
-
-function constraintCheck(h: HexCell, config: ScoringConfig, rentMedian: number): string[] {
-  const blocked: string[] = [];
-  const constraints = config?.constraints || [];
-
-  for (const c of constraints) {
-    if (c === "max_rent" && h.rent > rentMedian) blocked.push("Rent above the affordable half");
-    if (c === "needs_parking" && h.parking < 0.35) blocked.push("Little parking");
-    if (c === "ground_floor_commercial" && !(h.landuse === "commercial" || h.landuse === "mixed"))
-      blocked.push("Not commercial land");
-    if (c === "no_flood" && h.floodRisk > 0.65) blocked.push("Flood-prone");
-    if (c === "no_industrial" && h.landuse === "industrial") blocked.push("Industrial zone");
-    if (c === "high_visibility" && h.footfall < 0.45) blocked.push("Low visibility");
-  }
-
-  if (config?.landUseTable && config.landUseTable[h.landuse] === 0) {
-    blocked.push("Land use excluded");
-  }
-
-  return blocked;
-}
-
-export function scoreCity(data: CityData, config: any): ScoredHex[] {
-  if (!data || !data.hexes || data.hexes.length === 0) return [];
-
-  const rents = data.hexes.map((h) => h.rent || 0.5).sort((a, b) => a - b);
-  const rentMedian = rents[Math.floor(rents.length / 2)] ?? 0.5;
-
-  const decayD0 = typeof config?.decayD0 === "number" ? config.decayD0 : (config?.decay?.d0_km ? config.decay.d0_km * 1000 : 1000);
-  const decayFactor = Math.min(1, Math.max(0.1, decayD0 / 4000));
-
-  // Normalize weight inputs
-  const rawWeights = config?.weights || {};
-  const wDemand = (rawWeights.demand ?? rawWeights.population ?? 25) / 100;
-  const wAccess = (rawWeights.accessibility ?? 20) / 100;
-  const wComp = (rawWeights.competition ?? 20) / 100;
-  const wLand = (rawWeights.landuse ?? rawWeights.complementary ?? 15) / 100;
-  const wRisk = (rawWeights.risk ?? rawWeights.rent ?? 10) / 100;
-
-  const totalW = (wDemand + wAccess + wComp + wLand + wRisk) || 1;
-
-  const compMode = config?.competition?.mode || config?.competitionMode || "penalise";
-
-  const base = data.hexes.map((h) => {
-    const pop = Number.isFinite(h.population) ? h.population : 0.5;
-    const foot = Number.isFinite(h.footfall) ? h.footfall : 0.5;
-    const access = Number.isFinite(h.accessibility) ? h.accessibility : 0.5;
-    const comp = Number.isFinite(h.competition) ? h.competition : 0.4;
-    const flood = Number.isFinite(h.floodRisk) ? h.floodRisk : 0.2;
-    const landVal = h.landuse === "commercial" ? 0.95 : h.landuse === "mixed" ? 0.85 : h.landuse === "residential" ? 0.6 : 0.3;
-
-    // Smoothed demand
-    const demandVal = pop * (1 - decayFactor) + ((pop + foot) / 2) * decayFactor;
-    const accessVal = access;
-    const compVal = compMode === "cluster" || compMode === "cluster_bonus" ? comp : (1 - comp);
-    const riskVal = 1 - flood;
-
-    const parts = [
-      { layer: "demand", label: "Demand (Population)", weight: wDemand / totalW, value: demandVal, contribution: (wDemand / totalW) * demandVal },
-      { layer: "accessibility", label: "Accessibility", weight: wAccess / totalW, value: accessVal, contribution: (wAccess / totalW) * accessVal },
-      { layer: "competition", label: "Competition", weight: wComp / totalW, value: compVal, contribution: (wComp / totalW) * compVal },
-      { layer: "landuse", label: "Land Suitability", weight: wLand / totalW, value: landVal, contribution: (wLand / totalW) * landVal },
-      { layer: "risk", label: "Risk Factor", weight: wRisk / totalW, value: riskVal, contribution: (wRisk / totalW) * riskVal },
-    ];
-
-    let score = parts.reduce((s, p) => s + (Number.isFinite(p.contribution) ? p.contribution : 0), 0);
-    score = Math.max(0.05, Math.min(0.98, score));
-
-    const blockedBy = constraintCheck(h, config, rentMedian);
-    const subscores = {
-      demand: Math.round(demandVal * 100),
-      accessibility: Math.round(accessVal * 100),
-      complementary: Math.round((h.complementary ?? 0.5) * 100),
-      competition: Math.round(compVal * 100),
-      landuse: Math.round(landVal * 100),
-      risk: Math.round(riskVal * 100),
-    };
-
-    return { hex: h, parts, score, blockedBy, subscores, demandVal, accessVal, compVal, landVal, riskVal };
-  });
-
-  const scoreByH3 = new Map(base.map((b) => [b.hex.h3, b.score]));
-  const allScores = base.map((b) => b.score);
-  const mean = allScores.reduce((s, v) => s + v, 0) / (allScores.length || 1);
-  const sd = Math.sqrt(allScores.reduce((s, v) => s + (v - mean) ** 2, 0) / (allScores.length || 1)) || 0.1;
-
-  return base.map((b) => {
-    let ring: string[] = [];
-    try {
-      ring = gridDisk(b.hex.h3, 2);
-    } catch {
-      ring = [b.hex.h3];
-    }
-    const vals = ring.map((c) => scoreByH3.get(c)).filter((v): v is number => typeof v === "number" && Number.isFinite(v));
-    const localMean = vals.length > 0 ? vals.reduce((s, v) => s + v, 0) / vals.length : b.score;
-    const gi = ((localMean - mean) / (sd / Math.sqrt(Math.max(1, vals.length)))) * 0.6;
-    const spread = Math.sqrt(vals.reduce((s, v) => s + (v - localMean) ** 2, 0) / Math.max(1, vals.length));
-    const robustness: ScoredHex["robustness"] = spread < 0.05 ? "high" : spread < 0.1 ? "medium" : "low";
-
-    const demand = ((b.hex.population || 0.5) + (b.hex.footfall || 0.5)) / 2;
-    const isUnderserved = demand > 0.55 && (b.hex.competition || 0) < 0.45;
-    const underservedScore = Math.max(0, demand - (b.hex.competition || 0));
-
-    const finalScore = Number.isFinite(b.score) ? b.score : 0.65;
-    const score100 = Math.round(finalScore * 100);
-
-    return {
-      h3: b.hex.h3,
-      center: b.hex.center,
-      boundary: b.hex.boundary,
-      score: finalScore,
-      score100,
-      eligible: b.blockedBy.length === 0,
-      blockedBy: b.blockedBy,
-      parts: b.parts,
-      gi,
-      gi_z: gi,
-      underserved: isUnderserved,
-      underservedScore,
-      robustness,
-      raw: b.hex,
-      subscores: b.subscores,
-      footfall: b.hex.footfall ?? 0.5,
-      population: b.hex.population ?? 0.5,
-      accessibility: b.hex.accessibility ?? 0.5,
-      complementary: b.hex.complementary ?? 0.5,
-      competition: b.hex.competition ?? 0.4,
-      landuse: b.landVal,
-      rent: b.hex.rent ?? 0.5,
-      floodRisk: b.hex.floodRisk ?? 0.2,
-    };
-  });
-}
-
-export function topSites(scored: ScoredHex[], n = 5) {
-  if (!scored || scored.length === 0) return [];
-  return [...scored]
-    .sort((a, b) => b.score - a.score)
-    .slice(0, n);
-}
-
+const clamp = (x: number) => Math.max(0, Math.min(1, Number.isFinite(x) ? x : 0));
 export function distanceKm(a: [number, number], b: [number, number]) {
-  const dx = (a[0] - b[0]) * 111 * Math.cos((a[1] * Math.PI) / 180);
-  const dy = (a[1] - b[1]) * 111;
-  return Math.sqrt(dx * dx + dy * dy);
+  const rad = Math.PI / 180;
+  const v = Math.sin((b[1] - a[1]) * rad / 2) ** 2 + Math.cos(a[1] * rad) * Math.cos(b[1] * rad) * Math.sin((b[0] - a[0]) * rad / 2) ** 2;
+  return 6371 * 2 * Math.asin(Math.sqrt(Math.min(1, v)));
+}
+export function scoreCity(data: CityData, config: ScoringConfig): ScoredHex[] {
+  if (!data.hexes.length) return [];
+  const rents = data.hexes.map(h => h.rent).sort((a,b) => a-b);
+  const median = rents[Math.floor(rents.length / 2)] ?? 0.5;
+  const weights = Object.entries(config.weights).filter(([k,v]) => k in FACTORS && Number.isFinite(v) && v > 0);
+  const total = weights.reduce((s,[,v]) => s+v,0) || 1;
+  const radius = Math.max(0.1, config.competitionRadius / 1000);
+  const decay = Math.max(0.1, config.decayD0 / 1000);
+  const cells = data.hexes.map(h => {
+    const pressure = data.competitors.reduce((sum,p) => {
+      const d = distanceKm(h.center,p.lngLat);
+      return sum + (d <= radius ? Math.exp(-d / decay) : 0);
+    },0);
+    const density = 1 - Math.exp(-pressure / 3);
+    const competition = config.competitionMode === "neutral" ? 0.5 : config.competitionMode === "cluster" ? density : 1-density;
+    const values: Record<string,number> = {
+      population: clamp(h.population), demand: clamp(h.population), footfall: clamp(h.footfall),
+      accessibility: clamp(h.accessibility), complementary: clamp(h.complementary), competition,
+      rent: 1-clamp(h.rent), landuse: clamp(config.landUseTable[h.landuse]), risk: 1-clamp(h.floodRisk),
+    };
+    const blockedBy: string[] = [];
+    for (const c of config.constraints) {
+      if (c === "max_rent" && h.rent > median) blockedBy.push("Rent exceeds the city median");
+      if (c === "needs_parking" && h.parking < 0.35) blockedBy.push("Insufficient parking");
+      if (c === "ground_floor_commercial" && !["commercial","mixed"].includes(h.landuse)) blockedBy.push("Commercial or mixed zoning required");
+      if (c === "no_flood" && h.floodRisk > 0.45) blockedBy.push("Flood risk exceeds 45%");
+      if (c === "no_industrial" && h.landuse === "industrial") blockedBy.push("Industrial zoning excluded");
+      if (c === "high_visibility" && h.footfall < 0.45) blockedBy.push("Insufficient foot traffic");
+    }
+    if (config.landUseTable[h.landuse] === 0) blockedBy.push("Land use excluded");
+    const parts = weights.map(([layer,w]) => ({layer, label:FACTORS[layer]!, weight:w/total, value:values[layer]!, contribution:w/total*values[layer]!}));
+    const score = clamp(parts.reduce((s,p) => s+p.contribution,0));
+    const subscores = Object.fromEntries(Object.entries(values).map(([k,v]) => [k,Math.round(v*100)])) as ScoredHex["subscores"];
+    return {h,parts,score,subscores,blockedBy,density};
+  });
+  const byId = new Map(cells.map(c => [c.h.h3,c.score]));
+  const n = cells.length;
+  const mean = cells.reduce((s,c) => s+c.score,0)/n;
+  const sd = Math.sqrt(cells.reduce((s,c) => s+(c.score-mean)**2,0)/n);
+  return cells.map(c => {
+    const values = gridDisk(c.h.h3,2).map(id => byId.get(id)).filter((v): v is number => v !== undefined);
+    const k = values.length;
+    // Getis-Ord Gi*: binary neighborhood weights with self and finite population correction.
+    const denominator = n>1 ? sd*Math.sqrt((n*k-k*k)/(n-1)) : 0;
+    const gi = denominator > 0 ? (values.reduce((s,v)=>s+v,0)-mean*k)/denominator : 0;
+    const localMean = values.reduce((s,v)=>s+v,0)/k;
+    const spread = Math.sqrt(values.reduce((s,v)=>s+(v-localMean)**2,0)/k);
+    const demand = (c.h.population+c.h.footfall)/2;
+    return {
+      ...c.h, raw:c.h, competition:c.density, landuse:config.landUseTable[c.h.landuse],
+      score:c.score,score100:Math.round(c.score*100), eligible:!c.blockedBy.length,blockedBy:c.blockedBy,
+      parts:c.parts,subscores:c.subscores,gi,gi_z:gi,underserved:demand>0.55 && c.density<0.4,
+      underservedScore:Math.max(0,demand-c.density),robustness:spread<0.05?"high":spread<0.1?"medium":"low",
+    };
+  });
+}
+export function topSites(scored: ScoredHex[], n=5) {
+  return scored.filter(h=>h.eligible).sort((a,b)=>b.score-a.score || a.h3.localeCompare(b.h3)).slice(0,n);
 }
 

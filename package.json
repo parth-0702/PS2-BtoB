@@ -4,6 +4,8 @@
   "sideEffects": false,
   "type": "module",
   "scripts": {
+    "test": "node --import ./scripts/register-typescript.mjs --test tests/*.test.mjs",
+    "typecheck": "tsc --noEmit",
     "dev": "vite dev",
     "build": "vite build",
     "build:dev": "vite build --mode development",

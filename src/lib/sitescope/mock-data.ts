@@ -145,7 +145,7 @@ function coverageList(seed: CitySeed): LayerCoverage[] {
     id: id as LayerCoverage["id"],
     label: LAYER_LABELS[id] ?? id,
     coverage,
-    source: LAYER_SOURCES[id] ?? "Synthetic",
+    source: "Synthetic demo data (not measured)",
   }));
 }
 
