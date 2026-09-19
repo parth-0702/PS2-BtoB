@@ -5,18 +5,16 @@
 import type { ScoredHex } from "@/lib/sitescope/scoring";
 import { formatScore, formatLocationName } from "@/lib/formatters";
 
-const escapeHtml = (v: unknown) =>
-  String(v).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
-
-const csvValue = (v: unknown) => '"' + String(v).replace(/"/g, '""') + '"';
-
 // ── CSV ───────────────────────────────────────────────────────────────────────
 
 export function exportCSV(hexes: ScoredHex[], cityName: string): void {
-  const factors = ["demand", "accessibility", "complementary", "competition", "landuse", "risk"];
-  const headers = ["h3", "location_name", "latitude", "longitude", "score_100", "eligible", "blocked_by", ...factors];
+  const headers = [
+    "h3", "location_name", "lat", "lng", "score", "eligible", "blocked_by",
+    "sub_demand", "sub_accessibility", "sub_complementary",
+    "sub_competition", "sub_landuse", "sub_risk",
+  ];
 
-  const rows = [...hexes]
+  const rows = hexes
     .sort((a, b) => b.score - a.score)
     .map((h, i) => [
       h.h3,
@@ -25,12 +23,12 @@ export function exportCSV(hexes: ScoredHex[], cityName: string): void {
       h.center[0].toFixed(6),
       (h.score100 || formatScore(h.score)).toString(),
       h.eligible ? "yes" : "no",
-      (h.blockedBy || []).join("; "),
-      ...factors.map((k) => (h.subscores ? Number(h.subscores[k] ?? 0).toFixed(0) : "0")),
+      "", // blocked_by — placeholder
+      ...Object.values(h.subscores || {}).map((v) => Number(v).toFixed(0)),
     ]);
 
-  const csvContent = [headers, ...rows].map((row) => row.map(csvValue).join(",")).join("\r\n");
-  _download(csvContent, `sitescope_${cityName.toLowerCase()}_${Date.now()}.csv`, "text/csv;charset=utf-8");
+  const csv = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+  _download(csv, `sitescope_${cityName.toLowerCase()}_${Date.now()}.csv`, "text/csv");
 }
 
 // ── PDF (print) ───────────────────────────────────────────────────────────────
@@ -41,13 +39,9 @@ export function exportPDF(
   top3: ScoredHex[],
   weights: Record<string, number>,
   avgScore: number,
-  context?: { scenario?: unknown; constraints?: string[]; total?: number; eligible?: number },
 ): void {
   const w = window.open("", "_blank");
-  if (!w) {
-    window.alert("Please allow pop-ups to open the printable report.");
-    return;
-  }
+  if (!w) return;
 
   const formattedAvgScore = formatScore(avgScore);
 
@@ -56,17 +50,17 @@ export function exportPDF(
       (h, i) => `
       <tr>
         <td>${i + 1}</td>
-        <td><strong>${escapeHtml(formatLocationName(i))}</strong> <span style="color:#64748b; font-size: 0.85em;">(${escapeHtml(h.h3.slice(-6))})</span></td>
+        <td><strong>${formatLocationName(i)}</strong> <span style="color:#64748b; font-size: 0.85em;">(${h.h3.slice(-6)})</span></td>
         <td><strong>${h.score100 || formatScore(h.score)} / 100</strong></td>
         <td>${Object.entries(h.subscores || {})
-          .map(([k, v]) => `${escapeHtml(k)}: ${Number(v).toFixed(0)}`)
+          .map(([k, v]) => `${k}: ${Number(v).toFixed(0)}`)
           .join(", ")}</td>
       </tr>`,
     )
     .join("");
 
   const weightsRows = Object.entries(weights)
-    .map(([k, v]) => `<tr><td>${escapeHtml(k)}</td><td>${v}%</td></tr>`)
+    .map(([k, v]) => `<tr><td>${k}</td><td>${v}%</td></tr>`)
     .join("");
 
   w.document.write(`
@@ -74,7 +68,7 @@ export function exportPDF(
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>SiteScope Report — ${escapeHtml(cityName)}</title>
+<title>SiteScope Report — ${cityName}</title>
 <style>
   body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 2.5rem; color: #0f172a; max-width: 850px; margin: auto; }
   h1 { color: #0f172a; border-bottom: 2px solid #0d9488; padding-bottom: .5rem; font-size: 1.75rem; }
@@ -84,23 +78,19 @@ export function exportPDF(
   th { background: #f8fafc; color: #475569; font-weight: 600; }
   .badge { background: #f0fdf4; color: #166534; padding: .3rem .75rem; border-radius: 9999px; font-size: .8rem; border: 1px solid #bbf7d0; display: inline-block; margin-top: 0.5rem; }
   .meta { color: #64748b; font-size: .95rem; margin-bottom: 0.5rem; }
-  @media print { body { padding: 0; } button { display: none; } }
-  button { padding: 8px 16px; background: #0d9488; color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; margin-top: 1rem; }
+  @media print { body { padding: 0; } }
 </style>
 </head>
 <body>
 <h1>🏙️ SiteScope Location Intelligence Report</h1>
-<p class="meta">Target City: <strong>${escapeHtml(cityName)}</strong> &nbsp;|&nbsp; Business Format: <strong>${escapeHtml(businessSummary)}</strong> &nbsp;|&nbsp; Top Site Score: <strong>${formattedAvgScore}/100</strong></p>
+<p class="meta">Target City: <strong>${cityName}</strong> &nbsp;|&nbsp; Business Format: <strong>${businessSummary}</strong> &nbsp;|&nbsp; Top Site Score: <strong>${formattedAvgScore}/100</strong></p>
 <p class="meta">Generated: ${new Date().toLocaleString()}</p>
 <span class="badge">✓ Production Location Analysis</span>
 
-<button onclick="window.print()">Print / Save PDF</button>
-
 <h2>Top Recommended Locations</h2>
-${context?.total ? `<p style="font-size: 0.85rem; color: #64748b;">${context.eligible ?? top3.length} eligible out of ${context.total} locations analyzed.</p>` : ""}
 <table>
   <thead><tr><th>Rank</th><th>Location / Area</th><th>Readiness Score</th><th>Factor Breakdown</th></tr></thead>
-  <tbody>${top3Rows || '<tr><td colspan="4">No eligible locations found.</td></tr>'}</tbody>
+  <tbody>${top3Rows}</tbody>
 </table>
 
 <h2>Scoring Weight Configuration</h2>
@@ -121,11 +111,11 @@ ${context?.total ? `<p style="font-size: 0.85rem; color: #64748b;">${context.eli
 // ── Helper ────────────────────────────────────────────────────────────────────
 
 function _download(content: string, filename: string, mime: string): void {
-  const blob = new Blob(["\uFEFF" + content], { type: mime });
+  const blob = new Blob([content], { type: mime });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
   a.download = filename;
   a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  URL.revokeObjectURL(url);
 }

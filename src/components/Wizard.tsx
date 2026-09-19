@@ -13,7 +13,7 @@ interface WizardProps {
 export function Wizard({ onBack, onFinish }: WizardProps) {
   const { answers, setAnswer, setResolved, wizardStep, setWizardStep, useDefaults, city } =
     useSiteScope();
-  const [customText, setCustomText] = useState<Record<string, string>>(() => Object.fromEntries(Object.entries(answers).map(([key,value]) => [key,value.customText ?? ""])));
+  const [customText, setCustomText] = useState<Record<string, string>>({});
 
   const totalSteps = QUESTIONS.length;
   const q          = QUESTIONS[wizardStep]!;
@@ -40,7 +40,7 @@ export function Wizard({ onBack, onFinish }: WizardProps) {
   }
 
   function canAdvance() {
-    return q.id === "q6" || selectedIds.length > 0 || (customText[q.id]?.trim() ?? "").length > 0;
+    return selectedIds.length > 0 || (customText[q.id]?.trim() ?? "").length > 0;
   }
 
   function next() {
