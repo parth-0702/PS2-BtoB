@@ -1,0 +1,416 @@
+import { useEffect, useRef, useMemo, useState } from "react";
+import * as maplibregl from "maplibre-gl";
+import "maplibre-gl/dist/maplibre-gl.css";
+import type { ScoredHex } from "@/lib/sitescope/scoring";
+import { Layers, Plus, Minus, Crosshair, Users, Route, Store, ShieldAlert, Compass, Building2 } from "lucide-react";
+import { MapLayersPanel, type LayerItem } from "./MapLayersPanel";
+
+function scoreToColor(score: number): string {
+  const s = Math.max(0, Math.min(1, Number.isFinite(score) ? score : 0.5));
+  if (s < 0.25) {
+    const t = s / 0.25;
+    return `rgba(${Math.round(59 + t * 20)}, ${Math.round(130 + t * 40)}, ${Math.round(246 - t * 20)}, 0.70)`;
+  }
+  if (s < 0.50) {
+    const t = (s - 0.25) / 0.25;
+    return `rgba(${Math.round(16 + t * 40)}, ${Math.round(185 + t * 10)}, ${Math.round(129 - t * 40)}, 0.72)`;
+  }
+  if (s < 0.75) {
+    const t = (s - 0.50) / 0.25;
+    return `rgba(${Math.round(245 + t * 10)}, ${Math.round(158 - t * 40)}, ${Math.round(11 + t * 10)}, 0.75)`;
+  }
+  const t = (s - 0.75) / 0.25;
+  return `rgba(${Math.round(239 + t * 16)}, ${Math.round(68 - t * 30)}, ${Math.round(68 - t * 30)}, 0.85)`;
+}
+
+interface HexMapProps {
+  scored: ScoredHex[];
+  center: [number, number];
+  onHexClick: (h3: string) => void;
+  selectedH3: string | null;
+  topSitesList?: ScoredHex[];
+  mapStyleType?: "map" | "satellite" | "hybrid";
+  onStyleChange?: (style: "map" | "satellite" | "hybrid") => void;
+  competitors?: { id: string; name: string; lngLat: [number, number] }[];
+  layersList?: LayerItem[];
+  onToggleLayer?: (id: string) => void;
+  onLayerOpacity?: (id: string, opacity: number) => void;
+}
+
+export function HexMap({
+  scored,
+  center,
+  onHexClick,
+  selectedH3,
+  topSitesList = [],
+  mapStyleType = "map",
+  onStyleChange,
+  competitors = [],
+  layersList = [
+    { id: "population", name: "Population & Demographics", enabled: true, opacity: 80, coverage: "99% coverage", icon: <Users className="w-3.5 h-3.5 text-blue-500" /> },
+    { id: "roads", name: "Transportation & Transit", enabled: true, opacity: 70, coverage: "96% coverage", icon: <Route className="w-3.5 h-3.5 text-emerald-500" /> },
+    { id: "competitors", name: "Points of Interest & Competitors", enabled: true, opacity: 60, coverage: "92% coverage", isSynthetic: true, icon: <Store className="w-3.5 h-3.5 text-rose-500" /> },
+    { id: "landuse", name: "Land Use & Zoning", enabled: true, opacity: 70, coverage: "88% coverage", icon: <Building2 className="w-3.5 h-3.5 text-purple-500" /> },
+    { id: "flood", name: "Environmental & Flood Risk", enabled: false, opacity: 50, coverage: "82% coverage", isSynthetic: true, icon: <ShieldAlert className="w-3.5 h-3.5 text-amber-500" /> },
+  ],
+  onToggleLayer,
+  onLayerOpacity,
+}: HexMapProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<maplibregl.Map | null>(null);
+  const markersRef = useRef<maplibregl.Marker[]>([]);
+  const onClickRef = useRef(onHexClick);
+  onClickRef.current = onHexClick;
+
+  const [activeMapType, setActiveMapType] = useState<"map" | "satellite" | "hybrid">(mapStyleType);
+  const [isLayersOpen, setIsLayersOpen] = useState(false);
+
+  // Fallback local layer state if parent didn't provide
+  const [internalLayers, setInternalLayers] = useState<LayerItem[]>(layersList);
+
+  const activeLayers = layersList || internalLayers;
+
+  const handleToggle = (id: string) => {
+    if (onToggleLayer) {
+      onToggleLayer(id);
+    } else {
+      setInternalLayers((prev) =>
+        prev.map((l) => (l.id === id ? { ...l, enabled: !l.enabled } : l))
+      );
+    }
+  };
+
+  const handleOpacity = (id: string, opacity: number) => {
+    if (onLayerOpacity) {
+      onLayerOpacity(id, opacity);
+    } else {
+      setInternalLayers((prev) =>
+        prev.map((l) => (l.id === id ? { ...l, opacity } : l))
+      );
+    }
+  };
+
+  const geojson = useMemo<GeoJSON.FeatureCollection>(() => ({
+    type: "FeatureCollection",
+    features: scored.map((h) => ({
+      type: "Feature",
+      geometry: {
+        type: "Polygon",
+        coordinates: [h.boundary.map(([lng, lat]) => [lng, lat])],
+      },
+      properties: {
+        h3: h.h3,
+        score: h.score,
+        score100: h.score100 || Math.round(h.score * 100),
+        eligible: h.eligible,
+        isSelected: h.h3 === selectedH3,
+        color: scoreToColor(h.score),
+        isHotspot: h.gi_z > 1.65,
+        isUnderserved: h.underserved,
+      },
+    })),
+  }), [scored, selectedH3]);
+
+  function handleTypeSelect(type: "map" | "satellite" | "hybrid") {
+    setActiveMapType(type);
+    onStyleChange?.(type);
+  }
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+
+    const tileUrls =
+      activeMapType === "satellite" || activeMapType === "hybrid"
+        ? [
+            "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+          ]
+        : [
+            "https://a.tile.openstreetmap.org/{z}/{x}/{y}.png",
+            "https://b.tile.openstreetmap.org/{z}/{x}/{y}.png",
+          ];
+
+    const map = new maplibregl.Map({
+      container: containerRef.current,
+      style: {
+        version: 8,
+        sources: {
+          "base-tiles": {
+            type: "raster",
+            tiles: tileUrls,
+            tileSize: 256,
+            attribution: "© OpenStreetMap contributors",
+          },
+        },
+        layers: [
+          {
+            id: "base-layer",
+            type: "raster",
+            source: "base-tiles",
+            paint: {
+              "raster-opacity": activeMapType === "satellite" ? 0.95 : 0.88,
+              "raster-saturation": activeMapType === "map" ? -0.1 : 0,
+            },
+          },
+        ],
+      },
+      center: center,
+      zoom: 12.2,
+      maxZoom: 16,
+      minZoom: 9,
+    });
+
+    mapRef.current = map;
+
+    map.on("load", () => {
+      map.addSource("hexes", { type: "geojson", data: geojson });
+
+      map.addLayer({
+        id: "hex-fill",
+        type: "fill",
+        source: "hexes",
+        paint: {
+          "fill-color": ["get", "color"],
+          "fill-opacity": 0.78,
+        },
+      });
+
+      map.addLayer({
+        id: "hex-line",
+        type: "line",
+        source: "hexes",
+        paint: {
+          "line-color": "#ffffff",
+          "line-width": 0.6,
+          "line-opacity": 0.45,
+        },
+      });
+
+      map.addLayer({
+        id: "hex-selected-line",
+        type: "line",
+        source: "hexes",
+        filter: ["==", ["get", "isSelected"], true],
+        paint: {
+          "line-color": "#064e3b",
+          "line-width": 3.5,
+        },
+      });
+
+      map.on("click", "hex-fill", (e) => {
+        const f = e.features?.[0];
+        if (f?.properties?.h3) {
+          onClickRef.current(f.properties.h3 as string);
+        }
+      });
+
+      map.on("mouseenter", "hex-fill", () => {
+        map.getCanvas().style.cursor = "pointer";
+      });
+      map.on("mouseleave", "hex-fill", () => {
+        map.getCanvas().style.cursor = "";
+      });
+
+      updateMarkers(map, scored, selectedH3);
+    });
+
+    return () => {
+      markersRef.current.forEach((m) => m.remove());
+      map.remove();
+      mapRef.current = null;
+    };
+  }, [activeMapType]);
+
+  function updateMarkers(map: maplibregl.Map, hexList: ScoredHex[], selH3: string | null) {
+    markersRef.current.forEach((m) => m.remove());
+    markersRef.current = [];
+
+    // Selected Pin Marker
+    const selHex = hexList.find((h) => h.h3 === selH3);
+    if (selHex) {
+      const el = document.createElement("div");
+      el.className = "selected-marker-container";
+      el.innerHTML = `
+        <div style="display:flex;flex-direction:column;align-items:center;transform:translateY(-100%);cursor:pointer;">
+          <div style="background:#0f172a;color:#ffffff;font-family:sans-serif;font-size:11px;font-weight:700;padding:3px 8px;border-radius:12px;border:1px solid rgba(255,255,255,0.3);box-shadow:0 4px 12px rgba(0,0,0,0.35);display:flex;align-items:center;gap:4px;white-space:nowrap;">
+            <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#10b981;"></span>
+            Score ${selHex.score100 || Math.round(selHex.score * 100)}
+          </div>
+          <div style="width:20px;height:20px;background:#064e3b;border:3px solid #ffffff;border-radius:50%;box-shadow:0 2px 6px rgba(0,0,0,0.4);margin-top:2px;"></div>
+        </div>
+      `;
+      markersRef.current.push(
+        new maplibregl.Marker({ element: el }).setLngLat(selHex.center).addTo(map)
+      );
+    }
+
+    // High Potential Hotspot Badge
+    const topHotspot = [...hexList].sort((a, b) => b.score - a.score)[0];
+    if (topHotspot && topHotspot.h3 !== selH3) {
+      const el = document.createElement("div");
+      el.innerHTML = `
+        <div style="background:#dc2626;color:#ffffff;font-family:sans-serif;font-size:10px;font-weight:700;padding:3px 7px;border-radius:10px;border:1.5px solid #ffffff;box-shadow:0 3px 8px rgba(220,38,38,0.4);display:flex;align-items:center;gap:3px;cursor:pointer;white-space:nowrap;transform:translateY(-50%);">
+          <span>⚡ High Potential</span>
+        </div>
+      `;
+      el.addEventListener("click", () => onClickRef.current(topHotspot.h3));
+      markersRef.current.push(
+        new maplibregl.Marker({ element: el }).setLngLat(topHotspot.center).addTo(map)
+      );
+    }
+
+    // Underserved Area badge
+    const underservedHex = hexList.find((h) => h.underserved);
+    if (underservedHex && underservedHex.h3 !== selH3 && underservedHex.h3 !== topHotspot?.h3) {
+      const el = document.createElement("div");
+      el.innerHTML = `
+        <div style="background:#581c87;color:#f3e8ff;font-family:sans-serif;font-size:10px;font-weight:700;padding:3px 7px;border-radius:10px;border:1.5px solid #c084fc;box-shadow:0 3px 8px rgba(88,28,135,0.4);display:flex;align-items:center;gap:3px;cursor:pointer;white-space:nowrap;transform:translateY(-50%);">
+          <span>Underserved Area</span>
+        </div>
+      `;
+      el.addEventListener("click", () => onClickRef.current(underservedHex.h3));
+      markersRef.current.push(
+        new maplibregl.Marker({ element: el }).setLngLat(underservedHex.center).addTo(map)
+      );
+    }
+
+    // Competitor Markers
+    competitors.slice(0, 10).forEach((c) => {
+      const el = document.createElement("div");
+      el.innerHTML = `
+        <div style="width:18px;height:18px;background:#0f172a;border:1.5px solid #ffffff;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#38bdf8;font-size:9px;box-shadow:0 2px 6px rgba(0,0,0,0.3);" title="${c.name}">
+          ⚡
+        </div>
+      `;
+      markersRef.current.push(
+        new maplibregl.Marker({ element: el }).setLngLat(c.lngLat).addTo(map)
+      );
+    });
+  }
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !map.isStyleLoaded()) return;
+    const src = map.getSource("hexes") as maplibregl.GeoJSONSource | undefined;
+    if (src) src.setData(geojson);
+    updateMarkers(map, scored, selectedH3);
+  }, [geojson, scored, selectedH3]);
+
+  const zoomIn = () => mapRef.current?.zoomIn();
+  const zoomOut = () => mapRef.current?.zoomOut();
+  const recenter = () => mapRef.current?.flyTo({ center, zoom: 12.2 });
+
+  return (
+    <div className="relative w-full h-full rounded-2xl overflow-hidden border border-slate-200 shadow-sm bg-slate-100">
+      <div ref={containerRef} id="hex-map-canvas" className="w-full h-full" />
+
+      {/* Top Left: Map Style Switcher + Layers Button */}
+      <div className="absolute top-3.5 left-3.5 z-10 flex items-center gap-2">
+        <div className="flex bg-white/95 backdrop-blur-md rounded-xl p-1 border border-slate-200/90 shadow-sm text-xs font-semibold text-slate-700">
+          {(["map", "satellite", "hybrid"] as const).map((type) => (
+            <button
+              key={type}
+              onClick={() => handleTypeSelect(type)}
+              className={`px-3 py-1 rounded-lg capitalize transition-all ${
+                activeMapType === type
+                  ? "bg-[#064e3b] text-white shadow-sm"
+                  : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+              }`}
+            >
+              {type}
+            </button>
+          ))}
+        </div>
+
+        {/* Floating Layers Button */}
+        <button
+          onClick={() => setIsLayersOpen(!isLayersOpen)}
+          className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border transition-all shadow-sm ${
+            isLayersOpen
+              ? "bg-[#064e3b] text-white border-[#064e3b]"
+              : "bg-white/95 backdrop-blur-md border-slate-200/90 text-slate-700 hover:bg-slate-50"
+          }`}
+        >
+          <Layers className="w-3.5 h-3.5" />
+          <span>Layers</span>
+          <span className="ml-0.5 px-1.5 py-0.2 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-mono">
+            {activeLayers.filter((l) => l.enabled).length}
+          </span>
+        </button>
+      </div>
+
+      {/* Interactive Map Layers Panel (Requirement 5) */}
+      <MapLayersPanel
+        isOpen={isLayersOpen}
+        layers={activeLayers}
+        onToggleLayer={handleToggle}
+        onOpacityChange={handleOpacity}
+        onClose={() => setIsLayersOpen(false)}
+      />
+
+      {/* Top Right: Score Gradient Color Legend Pill */}
+      <div className="absolute top-3.5 right-3.5 z-10 bg-white/95 backdrop-blur-md rounded-xl px-3.5 py-2 border border-slate-200/90 shadow-sm flex flex-col gap-1 text-slate-800">
+        <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 font-mono">
+          Site Readiness Score
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-bold text-slate-600">0 (Low)</span>
+          <div
+            className="w-28 h-2 rounded-full shadow-inner"
+            style={{
+              background: "linear-gradient(90deg, #3b82f6 0%, #10b981 35%, #f59e0b 70%, #ef4444 100%)",
+            }}
+          />
+          <span className="text-[10px] font-bold text-slate-600">100 (High)</span>
+        </div>
+      </div>
+
+      {/* Right Floating Map Controls: Zoom In / Out / Recenter */}
+      <div className="absolute right-3.5 top-20 z-10 flex flex-col gap-1 bg-white/95 backdrop-blur-md rounded-xl border border-slate-200/90 shadow-sm p-1 text-slate-700">
+        <button
+          onClick={zoomIn}
+          className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+          title="Zoom In"
+        >
+          <Plus className="w-4 h-4" />
+        </button>
+        <button
+          onClick={zoomOut}
+          className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+          title="Zoom Out"
+        >
+          <Minus className="w-4 h-4" />
+        </button>
+        <div className="h-px bg-slate-200 my-0.5" />
+        <button
+          onClick={recenter}
+          className="p-2 hover:bg-slate-100 rounded-lg transition-colors text-slate-600 hover:text-[#064e3b]"
+          title="Recenter Map"
+        >
+          <Crosshair className="w-4 h-4" />
+        </button>
+      </div>
+
+      {/* Bottom Right: Map Layer Items Legend */}
+      <div className="absolute bottom-3.5 right-3.5 z-10 bg-white/95 backdrop-blur-md rounded-xl p-2.5 border border-slate-200/90 shadow-sm text-[10px] font-medium text-slate-700 space-y-1.5">
+        <div className="flex items-center gap-2">
+          <div className="w-3 h-3 rounded-full bg-[#064e3b] border-2 border-white shadow" />
+          <span>Selected Location</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="w-3 h-3 rounded-full bg-red-500" />
+          <span>High Potential Area</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="w-3 h-3 rounded-full bg-purple-700" />
+          <span>Underserved Area</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="w-3 h-3 rounded-full bg-slate-900 text-sky-400 text-[8px] flex items-center justify-center font-bold">
+            ⚡
+          </div>
+          <span>Competitor / POI</span>
+        </div>
+      </div>
+    </div>
+  );
+}
