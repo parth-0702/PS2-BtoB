@@ -59,8 +59,10 @@ export function ResultsSidebar({ top3, scored, city, config, onSelectHex, select
   const distribution = useMemo(() => {
     const buckets = [0, 0, 0, 0, 0];
     for (const h of scored) {
-      const idx = Math.min(4, Math.floor(h.score * 5));
-      buckets[idx]++;
+      const idx = Math.min(4, Math.floor((h.score ?? 0) * 5));
+      if (buckets[idx] !== undefined) {
+        buckets[idx]++;
+      }
     }
     return ["0–20", "20–40", "40–60", "60–80", "80–100"].map((range, i) => ({
       range,
@@ -150,7 +152,7 @@ export function ResultsSidebar({ top3, scored, city, config, onSelectHex, select
                   <span style={{ color: { high: "oklch(0.68 0.13 168)", medium: "oklch(0.72 0.16 68)", low: "oklch(0.62 0.2 32)" }[h.robustness] }}>
                     {h.robustness} robustness
                   </span>
-                  {h.underserved > 0.25 && (
+                  {(h.underservedScore > 0.25 || h.underserved) && (
                     <span style={{ color: "oklch(0.68 0.13 168)" }}>underserved</span>
                   )}
                 </div>

@@ -138,25 +138,25 @@ function interpretCustomText(text: string, config: ScoringConfig): string[] {
   const has = (...k: string[]) => k.some((x) => t.includes(x));
 
   if (has("cheap", "affordable", "low rent", "budget", "sasta")) {
-    w.rent += 0.08;
+    w['rent'] = (w['rent'] ?? 0.1) + 0.08;
     notes.push("Rent weighted more heavily from your own words");
   }
   if (has("busy", "crowd", "foot", "traffic", "market", "main road", "visibility")) {
-    w.footfall += 0.08;
+    w['footfall'] = (w['footfall'] ?? 0.2) + 0.08;
     notes.push("Busy, visible streets weighted higher from your own words");
   }
   if (has("quiet", "residential", "neighbourhood", "society", "apartment")) {
-    w.population += 0.08;
+    w['population'] = (w['population'] ?? 0.2) + 0.08;
     notes.push("Residential catchment weighted higher from your own words");
   }
   if (has("parking", "car", "drive", "scooter", "bike")) {
-    w.accessibility += 0.07;
+    w['accessibility'] = (w['accessibility'] ?? 0.15) + 0.07;
     config.constraints = Array.from(new Set([...config.constraints, "needs_parking"]));
     notes.push("Access and parking treated as important from your own words");
   }
   if (has("no competitor", "avoid competit", "away from competit")) {
     config.competitionMode = "avoid";
-    w.competition += 0.06;
+    w['competition'] = (w['competition'] ?? 0.2) + 0.06;
     notes.push("Competitors avoided based on your own words");
   }
   if (has("cluster", "next to similar", "near other")) {
@@ -226,12 +226,12 @@ export function resolveAnswers(answers: Answers): ResolveResult {
     interpretation.push("Cluster with competitors — busy strips score higher");
   } else if (comp === "neutral") {
     config.competitionMode = "neutral";
-    config.weights.competition = 0.06;
+    config.weights['competition'] = 0.06;
     interpretation.push("Competitors are treated as neutral");
   } else if (comp === "avoid") {
     config.competitionMode = "avoid";
     config.competitionRadius = 1000;
-    config.weights.competition += 0.06;
+    config.weights['competition'] = (config.weights['competition'] ?? 0.2) + 0.06;
     interpretation.push("Avoid competitors within 1 km");
   }
 
@@ -241,7 +241,7 @@ export function resolveAnswers(answers: Answers): ResolveResult {
     const entry = PRIORITY[p];
     if (!entry) return;
     const boost = [0.14, 0.09, 0.05][i] ?? 0.04;
-    config.weights[entry.layer] += boost;
+    config.weights[entry.layer] = (config.weights[entry.layer] ?? 0.15) + boost;
     interpretation.push(`Priority ${i + 1}: ${entry.label}`);
   });
 

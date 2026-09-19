@@ -16,6 +16,23 @@ export interface ScoredHex {
   underservedScore: number;
   robustness: "high" | "medium" | "low";
   raw: HexCell;
+  subscores: {
+    demand: number;
+    accessibility: number;
+    complementary: number;
+    competition: number;
+    landuse: number;
+    risk: number;
+    [key: string]: number;
+  };
+  footfall: number;
+  population: number;
+  accessibility: number;
+  complementary: number;
+  competition: number;
+  landuse: number;
+  rent: number;
+  floodRisk: number;
 }
 
 const LABELS: Record<string, string> = {
@@ -98,7 +115,16 @@ export function scoreCity(data: CityData, config: any): ScoredHex[] {
     score = Math.max(0.05, Math.min(0.98, score));
 
     const blockedBy = constraintCheck(h, config, rentMedian);
-    return { hex: h, parts, score, blockedBy };
+    const subscores = {
+      demand: Math.round(demandVal * 100),
+      accessibility: Math.round(accessVal * 100),
+      complementary: Math.round((h.complementary ?? 0.5) * 100),
+      competition: Math.round(compVal * 100),
+      landuse: Math.round(landVal * 100),
+      risk: Math.round(riskVal * 100),
+    };
+
+    return { hex: h, parts, score, blockedBy, subscores, demandVal, accessVal, compVal, landVal, riskVal };
   });
 
   const scoreByH3 = new Map(base.map((b) => [b.hex.h3, b.score]));
@@ -141,6 +167,15 @@ export function scoreCity(data: CityData, config: any): ScoredHex[] {
       underservedScore,
       robustness,
       raw: b.hex,
+      subscores: b.subscores,
+      footfall: b.hex.footfall ?? 0.5,
+      population: b.hex.population ?? 0.5,
+      accessibility: b.hex.accessibility ?? 0.5,
+      complementary: b.hex.complementary ?? 0.5,
+      competition: b.hex.competition ?? 0.4,
+      landuse: b.landVal,
+      rent: b.hex.rent ?? 0.5,
+      floodRisk: b.hex.floodRisk ?? 0.2,
     };
   });
 }
@@ -157,3 +192,4 @@ export function distanceKm(a: [number, number], b: [number, number]) {
   const dy = (a[1] - b[1]) * 111;
   return Math.sqrt(dx * dx + dy * dy);
 }
+

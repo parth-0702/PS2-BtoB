@@ -215,7 +215,7 @@ export function HexDetailPanel({ hex, onClose, onAddToCompare, inCompare, busine
             </div>
           )}
 
-          {hex.underserved > 0.25 && (
+          {(hex.underservedScore > 0.25 || hex.underserved) && (
             <div className="rounded-lg p-2 text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
               <div className="font-semibold mb-0.5">Underserved area</div>
               <div className="opacity-80">High demand, low competition</div>

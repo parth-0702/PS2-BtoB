@@ -63,6 +63,9 @@ const defaultLayerView = (): Record<LayerId, LayerViewState> => ({
   complementary: { visible: true, opacity: 0.8 },
   competition: { visible: true, opacity: 0.8 },
   rent: { visible: true, opacity: 0.8 },
+  demand: { visible: true, opacity: 0.8 },
+  landuse: { visible: true, opacity: 0.8 },
+  risk: { visible: true, opacity: 0.8 },
 });
 
 export const useSiteScope = create<SiteScopeState>()(

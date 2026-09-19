@@ -151,27 +151,34 @@ export function AiVoiceCopilot({
     if (q.includes("highlighted") || q.includes("selected") || q.includes("this area") || q.includes("proper for my business") || q.includes("why this area")) {
       if (!selectedHex) {
         const best = top3[0];
-        return `You haven't selected a specific hexagon on the map yet! However, looking at our top-ranked site **Hex ${best ? best.h3.substring(0, 8) : "center"}** (Score: **${best ? Math.round(best.score * 100) : 92}/100**), it provides the highest footfall and optimum accessibility in ${city.name} with manageable competitor saturation. Try clicking any hex on the map to get a localized breakdown!`;
+        return `You haven't selected a specific hexagon on the map yet! However, looking at our top-ranked site **Hex ${best ? best.h3.substring(0, 8) : "center"}** (Score: **${best ? (best.score100 || Math.round(best.score * 100)) : 92}/100**), it provides the highest footfall and optimum accessibility in ${city.name} with manageable competitor saturation. Try clicking any hex on the map to get a localized breakdown!`;
       }
 
-      const scorePct = Math.round(selectedHex.score * 100);
+      const scorePct = selectedHex.score100 || Math.round((selectedHex.score || 0) * 100);
       const isHotspot = (selectedHex as any).gi_z > 1.65;
       const isUnderserved = (selectedHex as any).underserved;
+
+      const ff = selectedHex.footfall ?? selectedHex.subscores?.['footfall'] ?? 0.5;
+      const acc = selectedHex.accessibility ?? selectedHex.subscores?.['accessibility'] ?? 0.5;
+      const pop = selectedHex.population ?? selectedHex.subscores?.['demand'] ?? 0.5;
+      const rnt = selectedHex.rent ?? selectedHex.subscores?.['rent'] ?? 0.5;
+      const cmp = selectedHex.competition ?? selectedHex.subscores?.['competition'] ?? 0.4;
+      const fld = selectedHex.floodRisk ?? selectedHex.subscores?.['risk'] ?? 0.2;
 
       let answer = `**Hex #${selectedHex.h3.substring(0, 8)}** achieves an overall Site Readiness Score of **${scorePct}/100**.\n\n`;
 
       if (scorePct >= 75) {
         answer += `🌟 **Why it's proper for your business:**\n`;
-        answer += `• **Strong Footfall & Demand:** Scores ${(selectedHex.footfall * 100).toFixed(0)}% in pedestrian activity, ensuring continuous natural customer discovery.\n`;
-        answer += `• **Transit Reach:** Road accessibility is rated at ${(selectedHex.accessibility * 100).toFixed(0)}%, allowing easy customer travel.\n`;
+        answer += `• **Strong Footfall & Demand:** Scores ${Math.round(ff > 1 ? ff : ff * 100)}% in pedestrian activity, ensuring continuous natural customer discovery.\n`;
+        answer += `• **Transit Reach:** Road accessibility is rated at ${Math.round(acc > 1 ? acc : acc * 100)}%, allowing easy customer travel.\n`;
         if (isHotspot) answer += `• **Statistical Hotspot:** Getis-Ord Gi* analysis confirms this cell is in a 95%+ confidence high-demand cluster.\n`;
         if (isUnderserved) answer += `• **Underserved Opportunity:** High footfall with relatively low direct competition makes it prime for expansion.\n`;
       } else if (scorePct >= 50) {
         answer += `⚖️ **Balanced Assessment:**\n`;
-        answer += `This location has moderate potential. It features ${(selectedHex.population * 100).toFixed(0)}% residential density, but rent is indexed at ${(selectedHex.rent * 100).toFixed(0)}% and competitor density is ${(selectedHex.competition * 100).toFixed(0)}%.\n`;
+        answer += `This location has moderate potential. It features ${Math.round(pop > 1 ? pop : pop * 100)}% residential density, but rent is indexed at ${Math.round(rnt > 1 ? rnt : rnt * 100)}% and competitor density is ${Math.round(cmp > 1 ? cmp : cmp * 100)}%.\n`;
       } else {
         answer += `⚠️ **Caution Factors:**\n`;
-        answer += `This area scored below benchmark (${scorePct}/100) primarily due to lower footfall (${(selectedHex.footfall * 100).toFixed(0)}%) and higher relative operational costs or flood risk (${(selectedHex.floodRisk * 100).toFixed(0)}%).`;
+        answer += `This area scored below benchmark (${scorePct}/100) primarily due to lower footfall (${Math.round(ff > 1 ? ff : ff * 100)}%) and higher relative operational costs or flood risk (${Math.round(fld > 1 ? fld : fld * 100)}%).`;
       }
 
       return answer;
@@ -182,8 +189,11 @@ export function AiVoiceCopilot({
       if (top3.length === 0) return `Based on current scoring parameters, no eligible sites met all strict thresholds. Try adjusting weight sliders.`;
       let res = `Here are the **Top 3 Recommended Locations** in ${city.name}:\n\n`;
       top3.forEach((h, i) => {
-        res += `**${i + 1}. Hex #${h.h3.substring(0, 8)}** — Score: **${Math.round(h.score * 100)}/100**\n`;
-        res += `   Footfall: ${(h.footfall * 100).toFixed(0)}% · Accessibility: ${(h.accessibility * 100).toFixed(0)}% · Rent: ${(h.rent * 100).toFixed(0)}%\n`;
+        const ff = h.footfall ?? h.subscores?.['footfall'] ?? 0.5;
+        const acc = h.accessibility ?? h.subscores?.['accessibility'] ?? 0.5;
+        const rnt = h.rent ?? h.subscores?.['rent'] ?? 0.5;
+        res += `**${i + 1}. Hex #${h.h3.substring(0, 8)}** — Score: **${h.score100 || Math.round(h.score * 100)}/100**\n`;
+        res += `   Footfall: ${Math.round(ff > 1 ? ff : ff * 100)}% · Accessibility: ${Math.round(acc > 1 ? acc : acc * 100)}% · Rent: ${Math.round(rnt > 1 ? rnt : rnt * 100)}%\n`;
       });
       res += `\nWould you like me to highlight the #1 location on the map?`;
       return res;
@@ -191,8 +201,10 @@ export function AiVoiceCopilot({
 
     // 3. Question about Competition
     if (q.includes("competit") || q.includes("rival")) {
-      const avgComp = (scored.reduce((a, b) => a + b.competition, 0) / (scored.length || 1) * 100).toFixed(0);
-      return `In **${city.name}**, competitor saturation averages **${avgComp}%** across commercial corridors. Your current scoring policy is set to **${config?.competitionMode ?? "penalize"}** nearby competitors with a distance decay of **${((config?.decayD0 ?? 1000) / 1000).toFixed(1)} km**. Sites marked as "Underserved" on the map have heavy footfall with below-average competition.`;
+      const totalComp = scored.reduce((a, b) => a + (b.competition ?? b.subscores?.['competition'] ?? 0.4), 0);
+      const avgCompVal = scored.length > 0 ? totalComp / scored.length : 0.4;
+      const avgCompPct = Math.round(avgCompVal > 1 ? avgCompVal : avgCompVal * 100);
+      return `In **${city.name}**, competitor saturation averages **${avgCompPct}%** across commercial corridors. Your current scoring policy is set to **${config?.competitionMode ?? "penalize"}** nearby competitors with a distance decay of **${((config?.decayD0 ?? 1000) / 1000).toFixed(1)} km**. Sites marked as "Underserved" on the map have heavy footfall with below-average competition.`;
     }
 
     // 4. Question about Hotspots / Getis-Ord Gi*

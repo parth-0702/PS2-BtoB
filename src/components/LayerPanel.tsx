@@ -56,7 +56,9 @@ export function LayerPanel({ layers, onToggle, onOpacity }: LayerPanelProps) {
                   {layer.label}
                 </span>
                 {layer.synthetic && (
-                  <AlertTriangle size={9} className="text-amber-400 flex-shrink-0" title="Synthetic data" />
+                  <span title="Synthetic data" className="flex items-center flex-shrink-0">
+                    <AlertTriangle size={9} className="text-amber-400" />
+                  </span>
                 )}
               </div>
               {/* Coverage bar */}

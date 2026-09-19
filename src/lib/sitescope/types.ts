@@ -4,7 +4,10 @@ export type LayerId =
   | "accessibility"
   | "complementary"
   | "competition"
-  | "rent";
+  | "rent"
+  | "demand"
+  | "landuse"
+  | "risk";
 
 export const LAYER_META: { id: LayerId; label: string; hint: string }[] = [
   { id: "population", label: "Population", hint: "Residents per hex" },
@@ -57,9 +60,11 @@ export interface CityData {
 export type CompetitionMode = "avoid" | "neutral" | "cluster";
 
 export interface ScoringConfig {
-  weights: Record<LayerId, number>;
+  weights: Record<LayerId | string, number>;
   decayD0: number; // metres
+  decay?: { type?: string; d0?: number; d0_km?: number };
   competitionMode: CompetitionMode;
+  competition?: { mode?: CompetitionMode; radius?: number; radius_km?: number; saturation?: number };
   competitionRadius: number; // metres
   constraints: string[];
   competitorCategories: string[];
@@ -76,5 +81,6 @@ export interface ResolveResult {
   fallbackUsed: boolean;
 }
 
-export type AnswerValue = { optionIds: string[]; customText?: string };
+export type AnswerValue = { optionIds: string[]; customText?: string | undefined };
 export type Answers = Record<string, AnswerValue>;
+

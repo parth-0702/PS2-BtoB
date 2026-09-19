@@ -1,6 +1,7 @@
 import { useEffect, useRef, useMemo, useState } from "react";
 import * as maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
+import type * as GeoJSON from "geojson";
 import type { ScoredHex } from "@/lib/sitescope/scoring";
 import { Layers, Plus, Minus, Crosshair, Users, Route, Store, ShieldAlert, Compass, Building2 } from "lucide-react";
 import { MapLayersPanel, type LayerItem } from "./MapLayersPanel";
@@ -198,8 +199,8 @@ export function HexMap({
 
       map.on("click", "hex-fill", (e) => {
         const f = e.features?.[0];
-        if (f?.properties?.h3) {
-          onClickRef.current(f.properties.h3 as string);
+        if (f?.properties?.['h3']) {
+          onClickRef.current(f.properties['h3'] as string);
         }
       });
 
@@ -289,10 +290,19 @@ export function HexMap({
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !map.isStyleLoaded()) return;
-    const src = map.getSource("hexes") as maplibregl.GeoJSONSource | undefined;
-    if (src) src.setData(geojson);
-    updateMarkers(map, scored, selectedH3);
+    if (!map) return;
+
+    const applyUpdate = () => {
+      const src = map.getSource("hexes") as maplibregl.GeoJSONSource | undefined;
+      if (src) src.setData(geojson);
+      updateMarkers(map, scored, selectedH3);
+    };
+
+    if (map.isStyleLoaded()) {
+      applyUpdate();
+    } else {
+      map.once("load", applyUpdate);
+    }
   }, [geojson, scored, selectedH3]);
 
   const zoomIn = () => mapRef.current?.zoomIn();

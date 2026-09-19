@@ -72,12 +72,12 @@ export function MapView({ onBack, onReset }: MapViewProps) {
   const currentActiveConfig: DrawerConfig = useMemo(() => {
     return {
       weights: {
-        demand: activeConfig?.weights?.demand ?? DEFAULT_FACTOR_WEIGHTS.demand,
-        accessibility: activeConfig?.weights?.accessibility ?? DEFAULT_FACTOR_WEIGHTS.accessibility,
-        complementary: activeConfig?.weights?.complementary ?? DEFAULT_FACTOR_WEIGHTS.complementary,
-        competition: activeConfig?.weights?.competition ?? DEFAULT_FACTOR_WEIGHTS.competition,
-        landuse: activeConfig?.weights?.landuse ?? DEFAULT_FACTOR_WEIGHTS.landuse,
-        risk: activeConfig?.weights?.risk ?? DEFAULT_FACTOR_WEIGHTS.risk,
+        demand: activeConfig?.weights?.['demand'] ?? DEFAULT_FACTOR_WEIGHTS.demand,
+        accessibility: activeConfig?.weights?.['accessibility'] ?? DEFAULT_FACTOR_WEIGHTS.accessibility,
+        complementary: activeConfig?.weights?.['complementary'] ?? DEFAULT_FACTOR_WEIGHTS.complementary,
+        competition: activeConfig?.weights?.['competition'] ?? DEFAULT_FACTOR_WEIGHTS.competition,
+        landuse: activeConfig?.weights?.['landuse'] ?? DEFAULT_FACTOR_WEIGHTS.landuse,
+        risk: activeConfig?.weights?.['risk'] ?? DEFAULT_FACTOR_WEIGHTS.risk,
       },
       decayType: (activeConfig?.decay as any)?.type ?? "exponential",
       decayD0Km: (activeConfig?.decay as any)?.d0_km ?? (activeConfig?.decayD0 ? activeConfig.decayD0 / 1000 : 1.2),
@@ -91,12 +91,12 @@ export function MapView({ onBack, onReset }: MapViewProps) {
   const currentBaseConfig: DrawerConfig = useMemo(() => {
     return {
       weights: {
-        demand: baseConfig?.weights?.demand ?? DEFAULT_FACTOR_WEIGHTS.demand,
-        accessibility: baseConfig?.weights?.accessibility ?? DEFAULT_FACTOR_WEIGHTS.accessibility,
-        complementary: baseConfig?.weights?.complementary ?? DEFAULT_FACTOR_WEIGHTS.complementary,
-        competition: baseConfig?.weights?.competition ?? DEFAULT_FACTOR_WEIGHTS.competition,
-        landuse: baseConfig?.weights?.landuse ?? DEFAULT_FACTOR_WEIGHTS.landuse,
-        risk: baseConfig?.weights?.risk ?? DEFAULT_FACTOR_WEIGHTS.risk,
+        demand: baseConfig?.weights?.['demand'] ?? DEFAULT_FACTOR_WEIGHTS.demand,
+        accessibility: baseConfig?.weights?.['accessibility'] ?? DEFAULT_FACTOR_WEIGHTS.accessibility,
+        complementary: baseConfig?.weights?.['complementary'] ?? DEFAULT_FACTOR_WEIGHTS.complementary,
+        competition: baseConfig?.weights?.['competition'] ?? DEFAULT_FACTOR_WEIGHTS.competition,
+        landuse: baseConfig?.weights?.['landuse'] ?? DEFAULT_FACTOR_WEIGHTS.landuse,
+        risk: baseConfig?.weights?.['risk'] ?? DEFAULT_FACTOR_WEIGHTS.risk,
       },
       decayType: (baseConfig?.decay as any)?.type ?? "exponential",
       decayD0Km: (baseConfig?.decay as any)?.d0_km ?? (baseConfig?.decayD0 ? baseConfig.decayD0 / 1000 : 1.2),
@@ -232,7 +232,7 @@ export function MapView({ onBack, onReset }: MapViewProps) {
       activeCity.name,
       BUSINESS_PRESETS.find((p) => p.id === businessType)?.preset ?? "EV Charging",
       top5.slice(0, 3),
-      liveConfigState.weights,
+      liveConfigState.weights as unknown as Record<string, number>,
       activeSelectedHex?.score100 || 87
     );
 

@@ -22,7 +22,7 @@ export function exportCSV(hexes: ScoredHex[], cityName: string): void {
       h.score.toFixed(1),
       h.eligible ? "yes" : "no",
       "", // blocked_by — placeholder
-      ...Object.values(h.subscores).map((v) => v.toFixed(1)),
+      ...Object.values(h.subscores || {}).map((v) => Number(v).toFixed(1)),
     ]);
 
   const csv = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
@@ -48,8 +48,8 @@ export function exportPDF(
         <td>${i + 1}</td>
         <td>${h.h3}</td>
         <td>${h.score.toFixed(1)}</td>
-        <td>${Object.entries(h.subscores)
-          .map(([k, v]) => `${k}: ${v.toFixed(0)}`)
+        <td>${Object.entries(h.subscores || {})
+          .map(([k, v]) => `${k}: ${Number(v).toFixed(0)}`)
           .join(", ")}</td>
       </tr>`,
     )
