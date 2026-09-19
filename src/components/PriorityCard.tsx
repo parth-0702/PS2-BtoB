@@ -49,7 +49,7 @@ export function PriorityCard({
             Customized
           </span>
         ) : (
-          <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-[#065f46] border border-emerald-200 text-[10px] font-bold font-mono">
+          <span className="px-2 py-0.5 rounded-full bg-[#e0f7f5] text-[#063B45] border border-[#b2eceb] text-[10px] font-bold font-mono">
             From Wizard
           </span>
         )}
@@ -98,7 +98,7 @@ export function PriorityCard({
       <div className="grid grid-cols-2 gap-2 pt-1">
         <button
           onClick={onAdjustWeights}
-          className="flex items-center justify-center gap-1 py-2 px-3 rounded-xl bg-[#064e3b] hover:bg-[#047857] text-white text-xs font-semibold shadow-xs transition-colors"
+          className="flex items-center justify-center gap-1 py-2 px-3 rounded-xl bg-[#063B45] hover:bg-[#075E68] text-white text-xs font-semibold shadow-xs transition-colors"
         >
           <SlidersHorizontal className="w-3 h-3" />
           <span>Adjust weights</span>

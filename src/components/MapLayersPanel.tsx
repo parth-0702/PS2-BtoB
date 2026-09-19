@@ -35,7 +35,7 @@ export function MapLayersPanel({
       {/* Header */}
       <div className="flex items-center justify-between pb-2 border-b border-slate-100 mb-2.5">
         <div className="flex items-center gap-1.5">
-          <Layers className="w-4 h-4 text-[#064e3b]" />
+          <Layers className="w-4 h-4 text-[#075E68]" />
           <span className="text-xs font-bold text-slate-900">Geospatial Data Layers</span>
         </div>
         <button
@@ -71,7 +71,7 @@ export function MapLayersPanel({
               <div
                 onClick={() => onToggleLayer(layer.id)}
                 className={`w-7 h-4 rounded-full flex items-center p-0.5 cursor-pointer transition-colors ${
-                  layer.enabled ? "bg-[#059669] justify-end" : "bg-slate-300 justify-start"
+                  layer.enabled ? "bg-[#16C6B5] justify-end" : "bg-slate-300 justify-start"
                 }`}
               >
                 <div className="w-3 h-3 rounded-full bg-white shadow-xs" />
@@ -88,7 +88,7 @@ export function MapLayersPanel({
                   max={100}
                   value={layer.opacity}
                   onChange={(e) => onOpacityChange(layer.id, parseInt(e.target.value))}
-                  className="flex-1 h-1 rounded-full appearance-none bg-slate-200 accent-[#059669] cursor-pointer"
+                  className="flex-1 h-1 rounded-full appearance-none bg-slate-200 accent-[#16C6B5] cursor-pointer"
                 />
                 <span className="text-[10px] font-mono text-slate-600 w-6 text-right">
                   {layer.opacity}%
