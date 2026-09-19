@@ -126,8 +126,7 @@ export function HexMap({
             "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
           ]
         : [
-            "https://a.tile.openstreetmap.org/{z}/{x}/{y}.png",
-            "https://b.tile.openstreetmap.org/{z}/{x}/{y}.png",
+            "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}",
           ];
 
     const map = new maplibregl.Map({
@@ -139,7 +138,7 @@ export function HexMap({
             type: "raster",
             tiles: tileUrls,
             tileSize: 256,
-            attribution: "© OpenStreetMap contributors",
+            attribution: "© OpenStreetMap contributors © CARTO",
           },
         },
         layers: [
@@ -148,8 +147,7 @@ export function HexMap({
             type: "raster",
             source: "base-tiles",
             paint: {
-              "raster-opacity": activeMapType === "satellite" ? 0.95 : 0.88,
-              "raster-saturation": activeMapType === "map" ? -0.1 : 0,
+              "raster-opacity": activeMapType === "satellite" ? 0.95 : 1.0,
             },
           },
         ],
@@ -192,7 +190,7 @@ export function HexMap({
         source: "hexes",
         filter: ["==", ["get", "isSelected"], true],
         paint: {
-          "line-color": "#064e3b",
+          "line-color": "#16C6B5",
           "line-width": 3.5,
         },
       });
@@ -231,12 +229,12 @@ export function HexMap({
       const el = document.createElement("div");
       el.className = "selected-marker-container";
       el.innerHTML = `
-        <div style="display:flex;flex-direction:column;align-items:center;transform:translateY(-100%);cursor:pointer;">
-          <div style="background:#0f172a;color:#ffffff;font-family:sans-serif;font-size:11px;font-weight:700;padding:3px 8px;border-radius:12px;border:1px solid rgba(255,255,255,0.3);box-shadow:0 4px 12px rgba(0,0,0,0.35);display:flex;align-items:center;gap:4px;white-space:nowrap;">
-            <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#10b981;"></span>
+          <div style="display:flex;flex-direction:column;align-items:center;transform:translateY(-100%);cursor:pointer;">
+          <div style="background:#063B45;color:#ffffff;font-family:sans-serif;font-size:11px;font-weight:700;padding:3px 8px;border-radius:12px;border:1px solid rgba(255,255,255,0.3);box-shadow:0 4px 12px rgba(0,0,0,0.35);display:flex;align-items:center;gap:4px;white-space:nowrap;">
+            <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#16C6B5;"></span>
             Score ${selHex.score100 || Math.round(selHex.score * 100)}
           </div>
-          <div style="width:20px;height:20px;background:#064e3b;border:3px solid #ffffff;border-radius:50%;box-shadow:0 2px 6px rgba(0,0,0,0.4);margin-top:2px;"></div>
+          <div style="width:20px;height:20px;background:#075E68;border:3px solid #ffffff;border-radius:50%;box-shadow:0 2px 6px rgba(0,0,0,0.4);margin-top:2px;"></div>
         </div>
       `;
       markersRef.current.push(
@@ -310,7 +308,7 @@ export function HexMap({
   const recenter = () => mapRef.current?.flyTo({ center, zoom: 12.2 });
 
   return (
-    <div className="relative w-full h-full rounded-2xl overflow-hidden border border-slate-200 shadow-sm bg-slate-100">
+    <div className="relative w-full h-full rounded-2xl overflow-hidden border border-slate-200 shadow-sm bg-[#04232a]">
       <div ref={containerRef} id="hex-map-canvas" className="w-full h-full" />
 
       {/* Top Left: Map Style Switcher + Layers Button */}
@@ -322,7 +320,7 @@ export function HexMap({
               onClick={() => handleTypeSelect(type)}
               className={`px-3 py-1 rounded-lg capitalize transition-all ${
                 activeMapType === type
-                  ? "bg-[#064e3b] text-white shadow-sm"
+                  ? "bg-[#063B45] text-white shadow-sm"
                   : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
               }`}
             >
@@ -336,13 +334,13 @@ export function HexMap({
           onClick={() => setIsLayersOpen(!isLayersOpen)}
           className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border transition-all shadow-sm ${
             isLayersOpen
-              ? "bg-[#064e3b] text-white border-[#064e3b]"
+              ? "bg-[#063B45] text-white border-[#063B45]"
               : "bg-white/95 backdrop-blur-md border-slate-200/90 text-slate-700 hover:bg-slate-50"
           }`}
         >
           <Layers className="w-3.5 h-3.5" />
           <span>Layers</span>
-          <span className="ml-0.5 px-1.5 py-0.2 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-mono">
+          <span className="ml-0.5 px-1.5 py-0.2 rounded-full bg-[#e0f7f5] text-[#063B45] text-[10px] font-mono">
             {activeLayers.filter((l) => l.enabled).length}
           </span>
         </button>
@@ -393,7 +391,7 @@ export function HexMap({
         <div className="h-px bg-slate-200 my-0.5" />
         <button
           onClick={recenter}
-          className="p-2 hover:bg-slate-100 rounded-lg transition-colors text-slate-600 hover:text-[#064e3b]"
+          className="p-2 hover:bg-slate-100 rounded-lg transition-colors text-slate-600 hover:text-[#075E68]"
           title="Recenter Map"
         >
           <Crosshair className="w-4 h-4" />
@@ -403,7 +401,7 @@ export function HexMap({
       {/* Bottom Right: Map Layer Items Legend */}
       <div className="absolute bottom-3.5 right-3.5 z-10 bg-white/95 backdrop-blur-md rounded-xl p-2.5 border border-slate-200/90 shadow-sm text-[10px] font-medium text-slate-700 space-y-1.5">
         <div className="flex items-center gap-2">
-          <div className="w-3 h-3 rounded-full bg-[#064e3b] border-2 border-white shadow" />
+          <div className="w-3 h-3 rounded-full bg-[#075E68] border-2 border-white shadow" />
           <span>Selected Location</span>
         </div>
         <div className="flex items-center gap-2">
