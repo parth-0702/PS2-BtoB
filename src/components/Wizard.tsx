@@ -72,7 +72,7 @@ export function Wizard({ onBack, onFinish }: WizardProps) {
   const progress = ((wizardStep + 1) / totalSteps) * 100;
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#f8fafc] text-[#0f172a] select-none font-sans">
+    <div className="wizard-page min-h-screen flex flex-col bg-[#f8fafc] text-[#0f172a] select-none font-sans">
       {/* Header bar */}
       <header className="flex items-center justify-between px-6 py-3.5 border-b border-slate-200/90 bg-white shadow-xs">
         <button
@@ -111,17 +111,17 @@ export function Wizard({ onBack, onFinish }: WizardProps) {
       {/* Progress bar */}
       <div className="h-1 bg-slate-100">
         <div
-          className="h-full transition-all duration-300 ease-out bg-gradient-to-r from-[#059669] to-[#0f766e]"
+          className="wizard-progress h-full transition-all duration-300 ease-out bg-gradient-to-r from-[#059669] to-[#0f766e]"
           style={{ width: `${progress}%` }}
         />
       </div>
 
       {/* Main content card */}
       <div className="flex-1 flex items-start justify-center pt-8 pb-16 px-4">
-        <div className="w-full max-w-xl bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 shadow-sm">
+        <div className="wizard-card w-full max-w-xl bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 shadow-sm">
           {/* Question header */}
           <div className="mb-6">
-            <div className="inline-flex items-center gap-1.5 text-[11px] font-bold px-3 py-1 rounded-full mb-3 bg-emerald-50 text-[#065f46] border border-emerald-200 font-mono">
+            <div className="wizard-step-badge inline-flex items-center gap-1.5 text-[11px] font-bold px-3 py-1 rounded-full mb-3 bg-emerald-50 text-[#065f46] border border-emerald-200 font-mono">
               <ChevronRight className="w-3 h-3" />
               Step {wizardStep + 1} of {totalSteps}
               {q.multi && ` · Pick up to ${q.maxSelect ?? "multiple"}`}
@@ -144,7 +144,7 @@ export function Wizard({ onBack, onFinish }: WizardProps) {
                   key={opt.id}
                   id={`opt-${q.id}-${opt.id}`}
                   onClick={() => toggle(opt.id)}
-                  className={`relative text-left p-4 rounded-2xl border transition-all duration-150 ${
+                  className={`wizard-option ${selected ? "is-selected" : ""} relative text-left p-4 rounded-2xl border transition-all duration-150 ${
                     selected
                       ? "bg-emerald-50/80 border-[#059669] shadow-sm"
                       : "bg-slate-50/60 border-slate-200 hover:bg-white hover:border-slate-300"
@@ -158,7 +158,7 @@ export function Wizard({ onBack, onFinish }: WizardProps) {
                       )}
                     </div>
                     {selected ? (
-                      <div className="flex-shrink-0 w-5 h-5 rounded-full bg-[#059669] text-white flex items-center justify-center shadow-xs">
+                      <div className="wizard-option-check flex-shrink-0 w-5 h-5 rounded-full bg-[#059669] text-white flex items-center justify-center shadow-xs">
                         {isMultiSelected ? (
                           <span className="text-[11px] font-bold leading-none">{rank}</span>
                         ) : (
@@ -231,9 +231,9 @@ export function Wizard({ onBack, onFinish }: WizardProps) {
                   borderRadius: 3,
                   background:
                     i < wizardStep
-                      ? "rgb(5, 150, 105)"
+                      ? "rgb(39, 148, 91)"
                       : i === wizardStep
-                        ? "rgb(6, 78, 59)"
+                        ? "rgb(16, 43, 82)"
                         : "rgb(226, 232, 240)",
                 }}
               />
