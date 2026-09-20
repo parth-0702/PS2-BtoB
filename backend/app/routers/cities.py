@@ -14,7 +14,9 @@ from fastapi import APIRouter, HTTPException
 
 router = APIRouter(prefix="/cities", tags=["cities"])
 
-DATA_DIR = Path(__file__).parent.parent / "data"
+# Resolve data directory from repo root or backend parent
+_ROOT = Path(__file__).resolve().parents[3]
+DATA_DIR = _ROOT / "data" if (_ROOT / "data").exists() else Path(__file__).resolve().parents[2] / "data"
 
 
 @lru_cache(maxsize=16)
@@ -54,3 +56,20 @@ def get_meta(city_id: str):
 def get_hexes(city_id: str):
     df = _load_hexes(city_id)
     return df.to_dict(orient="records")
+
+
+@router.get("/{city_id}/layers")
+def list_city_layers(city_id: str):
+    layers_dir = DATA_DIR / city_id / "layers"
+    if not layers_dir.exists():
+        return []
+    return [f.stem for f in layers_dir.glob("*.geojson")]
+
+
+@router.get("/{city_id}/layers/{layer_name}")
+def get_city_layer(city_id: str, layer_name: str):
+    file_path = DATA_DIR / city_id / "layers" / f"{layer_name}.geojson"
+    if not file_path.exists():
+        raise HTTPException(404, f"Layer '{layer_name}' not found for city '{city_id}'")
+    with open(file_path, "r", encoding="utf-8") as f:
+        return json.load(f)

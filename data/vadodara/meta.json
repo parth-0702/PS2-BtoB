@@ -1,0 +1,90 @@
+{
+  "id": "vadodara",
+  "name": "Vadodara",
+  "region": "Gujarat, India",
+  "center": [
+    73.1812,
+    22.3072
+  ],
+  "radius_km": 13.5,
+  "hex_count": 842,
+  "resolution": 8,
+  "blurb": "Cultural and educational center with chemical and manufacturing belts along the eastern corridor.",
+  "total_population": 2248059,
+  "census_published_population": 2300000,
+  "population_ratio_vs_census": 0.98,
+  "generation_timestamp": "2026-09-20T05:54:08.146004+00:00",
+  "layers": [
+    {
+      "id": "population",
+      "label": "Population & Demographics",
+      "source": "WorldPop India 2020 (Constrained 100m)",
+      "url": "https://hub.worldpop.org/geodata/summary?id=49792",
+      "retrieval_date": "2026-09-20",
+      "license": "Creative Commons Attribution 4.0 International",
+      "coverage": 1.0,
+      "is_derived": false,
+      "notes": "Exact pixel-by-pixel spatial aggregation of WorldPop raster inside H3 resolution 8 hexagons."
+    },
+    {
+      "id": "transportation",
+      "label": "Transportation & Accessibility",
+      "source": "OpenStreetMap via Overpass API / OSMnx",
+      "url": "https://www.openstreetmap.org",
+      "retrieval_date": "2026-09-20",
+      "license": "Open Data Commons Open Database License (ODbL)",
+      "coverage": 0.98,
+      "is_derived": false,
+      "notes": "Major/arterial/local highway network, intersections, and public transit platforms with STRtree nearest indexing."
+    },
+    {
+      "id": "pois",
+      "label": "Points of Interest & Competitors",
+      "source": "OpenStreetMap POI Tags (Amenity, Shop, Office, Leisure)",
+      "url": "https://www.openstreetmap.org",
+      "retrieval_date": "2026-09-20",
+      "license": "ODbL",
+      "coverage": 1.0,
+      "is_derived": false,
+      "notes": "Real commercial entities (1263 mapped entities). No synthetic POIs."
+    },
+    {
+      "id": "landuse",
+      "label": "Land Use & Zoning",
+      "source": "OpenStreetMap Landuse, Natural, and Building Footprints",
+      "url": "https://www.openstreetmap.org",
+      "retrieval_date": "2026-09-20",
+      "license": "ODbL",
+      "coverage": 0.92,
+      "is_derived": false,
+      "notes": "Area-weighted spatial overlay in UTM metric CRS across commercial, residential, industrial, and green polygons."
+    },
+    {
+      "id": "flood_susceptibility",
+      "label": "Flood Susceptibility (Derived)",
+      "source": "AWS Terrarium / Copernicus DEM + OSM Waterways",
+      "url": "https://registry.opendata.aws/terrain-tiles/",
+      "retrieval_date": "2026-09-20",
+      "license": "Open Data / Copernicus Open Access",
+      "coverage": 1.0,
+      "is_derived": true,
+      "notes": "Derived from relative elevation percentiles, slope gradient, and proximity to OSM water bodies. NOT an official flood zone map."
+    },
+    {
+      "id": "air_quality",
+      "label": "Air Quality (OpenAQ)",
+      "source": "OpenAQ v3 Monitoring Stations (CPCB / Ambient)",
+      "url": "https://openaq.org",
+      "retrieval_date": "2026-09-20",
+      "license": "Open Data Commons / CC BY 4.0",
+      "coverage": 0.0,
+      "is_derived": true,
+      "notes": "Unavailable \u2014 dropped from scoring weights gracefully without fake data."
+    }
+  ],
+  "warnings": [
+    "Flood susceptibility is a derived topographical index from DEM and waterways, not an official flood insurance zone map.",
+    "Income index is omitted (no official open per-hex income source exists for India; not fabricated)."
+  ],
+  "synthetic": false
+}

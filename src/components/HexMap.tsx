@@ -303,6 +303,12 @@ export function HexMap({
     }
   }, [geojson, scored, selectedH3]);
 
+  useEffect(() => {
+    if (mapRef.current) {
+      mapRef.current.flyTo({ center, zoom: 12.2, duration: 1500 });
+    }
+  }, [center[0], center[1]]);
+
   const zoomIn = () => mapRef.current?.zoomIn();
   const zoomOut = () => mapRef.current?.zoomOut();
   const recenter = () => mapRef.current?.flyTo({ center, zoom: 12.2 });

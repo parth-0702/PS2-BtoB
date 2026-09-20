@@ -30,3 +30,18 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Python & GIS Data
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+env/
+venv/
+*.tif
+*.tiff
+data/raw/
+data/*/cache/
+.env
+backend/.env
+

@@ -83,10 +83,13 @@ export interface CityMeta {
 export interface IsochroneBand {
   minutes: number;
   mode: string;
-  radius_km: number;
-  hex_count: number;
+  radius_km?: number;
+  hex_count?: number;
   population: number;
+  incremental_population?: number;
   area_km2: number;
+  incremental_area_km2?: number;
+  competitors_within_band?: number;
   polygon: [number, number][];
 }
 
@@ -94,8 +97,10 @@ export interface AiExplanation {
   summary: string;
   strengths: string[];
   risks: string[];
-  suggestion: string;
-  source: "gemini" | "template";
+  recommendation?: string;
+  suggestion?: string;
+  key_drivers?: string[];
+  source: "gemini" | "deterministic_engine" | "template";
 }
 
 // ── API calls ─────────────────────────────────────────────────────────────────
@@ -112,8 +117,16 @@ export async function scoreCity(cityId: string, config: object): Promise<ScoreRe
   return post<ScoreResponse>("/score", { city_id: cityId, config });
 }
 
+export async function scorePoint(cityId: string, lat: number, lng: number, config?: object): Promise<any | null> {
+  return post("/score/point", { city_id: cityId, lat, lng, config });
+}
+
 export async function fetchClusters(cityId: string): Promise<{ clusters: object[]; total: number } | null> {
   return post("/analysis/clusters", { city_id: cityId });
+}
+
+export async function fetchHotspots(cityId: string, config?: object): Promise<any | null> {
+  return post("/analysis/hotspots", { city_id: cityId, config });
 }
 
 export async function fetchIsochrone(
@@ -122,14 +135,41 @@ export async function fetchIsochrone(
   lng: number,
   mode: "walk" | "drive",
   minutes: number[],
-): Promise<{ bands: IsochroneBand[] } | null> {
+): Promise<{ bands: IsochroneBand[]; provider_used?: string; elapsed_ms?: number } | null> {
   return post("/analysis/isochrone", { city_id: cityId, lat, lng, mode, minutes });
 }
 
-export async function explainSite(site: object, business: string): Promise<AiExplanation | null> {
-  return post<AiExplanation>("/ai/explain", { site, business });
+export async function explainSite(site: object, business: string = "retail store"): Promise<AiExplanation | null> {
+  return post<AiExplanation>("/ai/explain", { site, business_type: business });
 }
 
-export async function compareSites(sites: object[], business: string): Promise<object | null> {
-  return post("/ai/compare", { sites, business });
+export async function compareSites(sites: object[], business: string = "retail store"): Promise<object | null> {
+  return post("/ai/compare", { sites, business_type: business });
+}
+
+export async function fetchSensitivity(cityId: string, config?: object): Promise<any | null> {
+  return post("/ai/sensitivity", { city_id: cityId, config, n_simulations: 100, top_n: 15 });
+}
+
+export async function downloadReport(cityId: string, business: string = "Retail Store", config?: object, aiExplanation?: object): Promise<void> {
+  const resp = await fetch(`${BASE_URL}/analysis/report`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      city_id: cityId,
+      business_type: business,
+      config: config || {},
+      ai_explanation: aiExplanation,
+    }),
+  });
+  if (!resp.ok) throw new Error("Report download failed");
+  const blob = await resp.blob();
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `SiteScope_Report_${cityId}.pdf`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.URL.revokeObjectURL(url);
 }

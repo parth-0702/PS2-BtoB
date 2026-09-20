@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ArrowLeft, ArrowRight, Check, SkipForward, Sparkles, MapPin } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, SkipForward, Sparkles, MapPin, ChevronRight } from "lucide-react";
 import { QUESTIONS } from "@/lib/sitescope/questions";
 import { useSiteScope } from "@/lib/sitescope/store";
 import { resolveAnswers } from "@/lib/sitescope/resolve";

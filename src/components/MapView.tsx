@@ -4,11 +4,14 @@ import {
   SlidersHorizontal, Download,
   GitCompare, Edit3, Bot, Sparkles, X,
   TrendingUp, Activity, Check, ChevronRight,
-  Users,
+  Users, Loader2,
 } from "lucide-react";
+import { cellToBoundary } from "h3-js";
 import { listCities, buildCityData } from "@/lib/sitescope/mock-data";
 import { scoreCity, topSites, type ScoredHex } from "@/lib/sitescope/scoring";
 import { useSiteScope, type FactorWeights } from "@/lib/sitescope/store";
+import { resolveNeighborhood } from "@/lib/sitescope/neighborhoods";
+import { fetchScoredHexes } from "@/lib/sitescope/api";
 import { HexMap } from "./HexMap";
 import { PriorityCard } from "./PriorityCard";
 import { AdjustWeightsDrawer, type DrawerConfig } from "./AdjustWeightsDrawer";
@@ -23,13 +26,22 @@ interface MapViewProps {
 }
 
 const BUSINESS_PRESETS = [
-  { id: "ev",      label: "⚡ EV Charging Station", preset: "EV Charging" },
-  { id: "cafe",    label: "☕ Cafe & Bakery",        preset: "Cafe" },
-  { id: "retail",  label: "🛍️ Retail Store",         preset: "Retail" },
   { id: "clinic",  label: "🏥 Healthcare Clinic",    preset: "Healthcare" },
+  { id: "cafe",    label: "☕ Cafe & Bakery",        preset: "Cafe" },
+  { id: "ev",      label: "⚡ EV Charging Station", preset: "EV Charging" },
+  { id: "retail",  label: "🛍️ Retail Store",         preset: "Retail" },
   { id: "kitchen", label: "📦 Cloud Kitchen",        preset: "Cloud Kitchen" },
   { id: "gym",     label: "💪 Fitness Center",       preset: "Fitness" },
 ];
+
+const PRESET_WEIGHT_MAP: Record<string, Partial<FactorWeights>> = {
+  clinic:  { demand: 35, accessibility: 25, landuse: 15, risk: 15, competition: 5, complementary: 5 },
+  cafe:    { demand: 35, complementary: 25, accessibility: 20, competition: 10, landuse: 5, risk: 5 },
+  ev:      { accessibility: 40, demand: 25, landuse: 15, competition: 10, complementary: 5, risk: 5 },
+  retail:  { demand: 30, accessibility: 25, competition: 20, complementary: 15, landuse: 5, risk: 5 },
+  kitchen: { accessibility: 30, demand: 30, risk: 15, competition: 10, landuse: 10, complementary: 5 },
+  gym:     { demand: 35, accessibility: 25, complementary: 20, competition: 10, landuse: 5, risk: 5 },
+};
 
 const DEFAULT_FACTOR_WEIGHTS: FactorWeights = {
   demand: 30,
@@ -41,11 +53,11 @@ const DEFAULT_FACTOR_WEIGHTS: FactorWeights = {
 };
 
 function getScoreLabel(score: number): { label: string; color: string } {
-  if (score >= 85) return { label: "Excellent Opportunity", color: "#059669" };
-  if (score >= 70) return { label: "Strong Opportunity",    color: "#0f766e" };
-  if (score >= 55) return { label: "Good Potential",        color: "#0891b2" };
-  if (score >= 40) return { label: "Moderate Fit",          color: "#d97706" };
-  return                   { label: "Low Suitability",      color: "#dc2626" };
+  if (score >= 80) return { label: "Strong Opportunity", color: "#059669" };
+  if (score >= 65) return { label: "Good Potential",     color: "#0f766e" };
+  if (score >= 50) return { label: "Moderate Fit",       color: "#0891b2" };
+  if (score >= 35) return { label: "Marginal Fit",       color: "#d97706" };
+  return                   { label: "Low Suitability",   color: "#dc2626" };
 }
 
 export function MapView({ onBack, onReset }: MapViewProps) {
@@ -62,7 +74,7 @@ export function MapView({ onBack, onReset }: MapViewProps) {
 
   const cities = listCities();
 
-  const [selectedCityId, setSelectedCityId]   = useState<string>(city?.id ?? "surat");
+  const [selectedCityId, setSelectedCityId]   = useState<string>(city?.id ?? "vadodara");
   const [isCityMenuOpen, setIsCityMenuOpen]   = useState(false);
   const [businessType, setBusinessType]       = useState(BUSINESS_PRESETS[0]!.id);
   const [activeNavTab, setActiveNavTab]       = useState<"dashboard" | "analyze" | "compare" | "reports">("dashboard");
@@ -72,39 +84,66 @@ export function MapView({ onBack, onReset }: MapViewProps) {
   const [toastMessage, setToastMessage]       = useState<string | null>(null);
   const [showDetailPanel, setShowDetailPanel] = useState(false);
 
-  const currentActiveConfig: DrawerConfig = useMemo(() => ({
-    weights: {
-      demand:        activeConfig?.weights?.['demand']        ?? DEFAULT_FACTOR_WEIGHTS.demand,
-      accessibility: activeConfig?.weights?.['accessibility'] ?? DEFAULT_FACTOR_WEIGHTS.accessibility,
-      complementary: activeConfig?.weights?.['complementary'] ?? DEFAULT_FACTOR_WEIGHTS.complementary,
-      competition:   activeConfig?.weights?.['competition']   ?? DEFAULT_FACTOR_WEIGHTS.competition,
-      landuse:       activeConfig?.weights?.['landuse']       ?? DEFAULT_FACTOR_WEIGHTS.landuse,
-      risk:          activeConfig?.weights?.['risk']          ?? DEFAULT_FACTOR_WEIGHTS.risk,
-    },
-    decayType:              (activeConfig?.decay as any)?.type ?? "exponential",
-    decayD0Km:              (activeConfig?.decay as any)?.d0_km ?? (activeConfig?.decayD0 ? activeConfig.decayD0 / 1000 : 1.2),
-    competitionMode:        (activeConfig?.competition as any)?.mode ?? activeConfig?.competitionMode ?? "penalise",
-    competitionRadiusKm:    (activeConfig?.competition as any)?.radius_km ?? 1.0,
-    competitionSaturation:  (activeConfig?.competition as any)?.saturation ?? 5,
-    constraints:            activeConfig?.constraints ?? ["no_flood"],
-  }), [activeConfig]);
+  const [backendScored, setBackendScored] = useState<ScoredHex[] | null>(null);
+  const [isLoadingScore, setIsLoadingScore] = useState(false);
 
-  const currentBaseConfig: DrawerConfig = useMemo(() => ({
-    weights: {
-      demand:        baseConfig?.weights?.['demand']        ?? DEFAULT_FACTOR_WEIGHTS.demand,
-      accessibility: baseConfig?.weights?.['accessibility'] ?? DEFAULT_FACTOR_WEIGHTS.accessibility,
-      complementary: baseConfig?.weights?.['complementary'] ?? DEFAULT_FACTOR_WEIGHTS.complementary,
-      competition:   baseConfig?.weights?.['competition']   ?? DEFAULT_FACTOR_WEIGHTS.competition,
-      landuse:       baseConfig?.weights?.['landuse']       ?? DEFAULT_FACTOR_WEIGHTS.landuse,
-      risk:          baseConfig?.weights?.['risk']          ?? DEFAULT_FACTOR_WEIGHTS.risk,
-    },
-    decayType:             (baseConfig?.decay as any)?.type ?? "exponential",
-    decayD0Km:             (baseConfig?.decay as any)?.d0_km ?? (baseConfig?.decayD0 ? baseConfig.decayD0 / 1000 : 1.2),
-    competitionMode:       (baseConfig?.competition as any)?.mode ?? baseConfig?.competitionMode ?? "penalise",
-    competitionRadiusKm:   (baseConfig?.competition as any)?.radius_km ?? 1.0,
-    competitionSaturation: (baseConfig?.competition as any)?.saturation ?? 5,
-    constraints:           baseConfig?.constraints ?? ["no_flood"],
-  }), [baseConfig]);
+  // Sync city state
+  useEffect(() => {
+    if (city?.id && city.id !== selectedCityId) {
+      setSelectedCityId(city.id);
+    }
+  }, [city?.id]);
+
+  // Sync business preset from activeConfig
+  useEffect(() => {
+    if ((activeConfig as any)?.preset) {
+      const presetStr = String((activeConfig as any).preset).toLowerCase();
+      const match = BUSINESS_PRESETS.find(
+        (p) => p.id === presetStr || presetStr.includes(p.id) || p.preset.toLowerCase().includes(presetStr)
+      );
+      if (match) setBusinessType(match.id);
+    }
+  }, [activeConfig]);
+
+  const currentActiveConfig: DrawerConfig = useMemo(() => {
+    const rawW = activeConfig?.weights as any;
+    return {
+      weights: {
+        demand:        rawW?.demand        ?? (rawW?.population ? Math.round(((rawW.population || 0.2) + (rawW.footfall || 0.2)) * 55) : DEFAULT_FACTOR_WEIGHTS.demand),
+        accessibility: rawW?.accessibility ?? DEFAULT_FACTOR_WEIGHTS.accessibility,
+        complementary: rawW?.complementary ?? DEFAULT_FACTOR_WEIGHTS.complementary,
+        competition:   rawW?.competition   ?? DEFAULT_FACTOR_WEIGHTS.competition,
+        landuse:       rawW?.landuse       ?? DEFAULT_FACTOR_WEIGHTS.landuse,
+        risk:          rawW?.risk          ?? DEFAULT_FACTOR_WEIGHTS.risk,
+      },
+      decayType:              (activeConfig?.decay as any)?.type ?? "exponential",
+      decayD0Km:              (activeConfig?.decay as any)?.d0_km ?? (activeConfig?.decayD0 ? activeConfig.decayD0 / 1000 : 1.2),
+      competitionMode:        (activeConfig?.competition as any)?.mode ?? activeConfig?.competitionMode ?? "penalise",
+      competitionRadiusKm:    (activeConfig?.competition as any)?.radius_km ?? 1.0,
+      competitionSaturation:  (activeConfig?.competition as any)?.saturation ?? 5,
+      constraints:            activeConfig?.constraints ?? ["no_flood"],
+    };
+  }, [activeConfig]);
+
+  const currentBaseConfig: DrawerConfig = useMemo(() => {
+    const rawW = baseConfig?.weights as any;
+    return {
+      weights: {
+        demand:        rawW?.demand        ?? (rawW?.population ? Math.round(((rawW.population || 0.2) + (rawW.footfall || 0.2)) * 55) : DEFAULT_FACTOR_WEIGHTS.demand),
+        accessibility: rawW?.accessibility ?? DEFAULT_FACTOR_WEIGHTS.accessibility,
+        complementary: rawW?.complementary ?? DEFAULT_FACTOR_WEIGHTS.complementary,
+        competition:   rawW?.competition   ?? DEFAULT_FACTOR_WEIGHTS.competition,
+        landuse:       rawW?.landuse       ?? DEFAULT_FACTOR_WEIGHTS.landuse,
+        risk:          rawW?.risk          ?? DEFAULT_FACTOR_WEIGHTS.risk,
+      },
+      decayType:             (baseConfig?.decay as any)?.type ?? "exponential",
+      decayD0Km:             (baseConfig?.decay as any)?.d0_km ?? (baseConfig?.decayD0 ? baseConfig.decayD0 / 1000 : 1.2),
+      competitionMode:       (baseConfig?.competition as any)?.mode ?? baseConfig?.competitionMode ?? "penalise",
+      competitionRadiusKm:   (baseConfig?.competition as any)?.radius_km ?? 1.0,
+      competitionSaturation: (baseConfig?.competition as any)?.saturation ?? 5,
+      constraints:           baseConfig?.constraints ?? ["no_flood"],
+    };
+  }, [baseConfig]);
 
   const [liveConfigState, setLiveConfigState] = useState<DrawerConfig>(currentActiveConfig);
 
@@ -132,7 +171,96 @@ export function MapView({ onBack, onReset }: MapViewProps) {
 
   const cityData = useMemo(() => buildCityData(activeCity.id), [activeCity.id]);
 
+  // Real-time backend scoring hook
+  useEffect(() => {
+    let isMounted = true;
+    setIsLoadingScore(true);
+
+    const businessPreset = BUSINESS_PRESETS.find((p) => p.id === businessType)?.preset || "Retail Store";
+
+    fetchScoredHexes(activeCity.id, {
+      preset: businessPreset,
+      weights: liveConfigState.weights,
+      decayType: liveConfigState.decayType,
+      decayD0Km: liveConfigState.decayD0Km,
+      competitionMode: liveConfigState.competitionMode,
+      competitionRadiusKm: liveConfigState.competitionRadiusKm,
+      competitionSaturation: liveConfigState.competitionSaturation,
+      constraints: liveConfigState.constraints,
+    })
+      .then((res) => {
+        if (!isMounted) return;
+        if (res && Array.isArray(res.hexes) && res.hexes.length > 0) {
+          const mapped: ScoredHex[] = res.hexes.map((h: any) => {
+            let boundary: [number, number][] = [];
+            try {
+              boundary = cellToBoundary(h.h3, true) as [number, number][];
+            } catch {
+              boundary = [
+                [h.lng - 0.005, h.lat - 0.005],
+                [h.lng + 0.005, h.lat - 0.005],
+                [h.lng + 0.005, h.lat + 0.005],
+                [h.lng - 0.005, h.lat + 0.005],
+              ];
+            }
+            const s100 = Math.round(h.score);
+            return {
+              h3: h.h3,
+              center: [h.lng, h.lat],
+              boundary,
+              score: h.score / 100,
+              score100: s100,
+              eligible: h.eligible !== false,
+              blockedBy: h.blocked_by ? [h.blocked_by] : [],
+              parts: [
+                { layer: "demand", label: "Demand", weight: liveConfigState.weights.demand, value: h.sub_demand || 50, contribution: h.contrib_demand || 0 },
+                { layer: "accessibility", label: "Accessibility", weight: liveConfigState.weights.accessibility, value: h.sub_accessibility || 50, contribution: h.contrib_accessibility || 0 },
+                { layer: "competition", label: "Competition", weight: liveConfigState.weights.competition, value: h.sub_competition || 50, contribution: h.contrib_competition || 0 },
+                { layer: "landuse", label: "Land Suitability", weight: liveConfigState.weights.landuse, value: h.sub_landuse || 50, contribution: h.contrib_landuse || 0 },
+                { layer: "risk", label: "Risk Factor", weight: liveConfigState.weights.risk, value: h.sub_risk || 50, contribution: h.contrib_risk || 0 },
+              ],
+              gi: 0,
+              gi_z: s100 > 75 ? 2.1 : 0,
+              underserved: (h.sub_demand || 0) > 60 && (h.sub_competition || 0) > 60,
+              underservedScore: h.sub_demand || 0,
+              robustness: s100 > 70 ? "high" : s100 > 50 ? "medium" : "low",
+              raw: h as any,
+              subscores: {
+                demand: Math.round(h.sub_demand || 50),
+                accessibility: Math.round(h.sub_accessibility || 50),
+                complementary: Math.round(h.sub_complementary || 50),
+                competition: Math.round(h.sub_competition || 50),
+                landuse: Math.round(h.sub_landuse || 50),
+                risk: Math.round(h.sub_risk || 50),
+              },
+              footfall: (h.sub_demand || 50) / 100,
+              population: (h.sub_demand || 50) / 100,
+              accessibility: (h.sub_accessibility || 50) / 100,
+              complementary: (h.sub_complementary || 50) / 100,
+              competition: (h.sub_competition || 50) / 100,
+              landuse: (h.sub_landuse || 50) / 100,
+              rent: 0.5,
+              floodRisk: (100 - (h.sub_risk || 50)) / 100,
+            };
+          });
+          setBackendScored(mapped);
+        }
+      })
+      .catch((err) => {
+        console.warn("Backend score fetch fallback:", err);
+        setBackendScored(null);
+      })
+      .finally(() => {
+        if (isMounted) setIsLoadingScore(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [activeCity.id, liveConfigState, businessType]);
+
   const scored = useMemo(() => {
+    if (backendScored && backendScored.length > 0) return backendScored;
     if (!cityData) return [];
     return scoreCity(cityData, {
       weights: liveConfigState.weights,
@@ -144,7 +272,7 @@ export function MapView({ onBack, onReset }: MapViewProps) {
       },
       constraints: liveConfigState.constraints,
     });
-  }, [cityData, liveConfigState]);
+  }, [backendScored, cityData, liveConfigState]);
 
   const top5 = useMemo(() => topSites(scored, 5), [scored]);
 
@@ -153,21 +281,40 @@ export function MapView({ onBack, onReset }: MapViewProps) {
     return top5[0] ?? null;
   }, [selectedH3, scored, top5]);
 
-  const getSubareaName = (index: number) => {
-    const names = ["Vesu", "Adajan", "Pal", "Udhna", "Dumas", "Katargam", "Varachha", "Piplod"];
-    return names[index % names.length]!;
+  const handleBusinessTypeChange = (newId: string) => {
+    setBusinessType(newId);
+    const bumps = PRESET_WEIGHT_MAP[newId];
+    if (bumps) {
+      const updatedWeights = { ...liveConfigState.weights, ...bumps };
+      setLiveConfigState((prev) => ({
+        ...prev,
+        weights: updatedWeights,
+      }));
+      setActiveConfig({
+        ...activeConfig,
+        weights: updatedWeights as any,
+      } as any);
+    }
   };
 
-  const getKeyAdvantage = (index: number) => {
-    const adv = [
-      "High population, good access",
-      "Growing commercial area",
-      "Underserved opportunity",
-      "Good road connectivity",
-      "Tourism + commercial mix",
-    ];
-    return adv[index % adv.length]!;
-  };
+  const handleExportPDF = useCallback(async () => {
+    try {
+      const { downloadReport } = await import("@/lib/api");
+      const currentBusiness = BUSINESS_PRESETS.find((p) => p.id === businessType)?.preset ?? "Healthcare";
+      await downloadReport(activeCity.id, currentBusiness, { weights: liveConfigState.weights });
+      setToastMessage("PDF dossier downloaded successfully!");
+      setTimeout(() => setToastMessage(null), 3000);
+    } catch {
+      const currentBusiness = BUSINESS_PRESETS.find((p) => p.id === businessType)?.preset ?? "Healthcare";
+      exportPDF(activeCity.name, currentBusiness, top5.slice(0, 3), liveConfigState.weights, top5[0]?.score ? Math.round(top5[0].score * 100) : 80);
+    }
+  }, [activeCity, businessType, liveConfigState, top5]);
+
+  const handleExportCSV = useCallback(() => {
+    exportCSV(scored, activeCity.name);
+    setToastMessage("CSV export downloaded successfully!");
+    setTimeout(() => setToastMessage(null), 3000);
+  }, [scored, activeCity]);
 
   const handleApplyWeights = (newConfig: DrawerConfig) => {
     setActiveConfig({
@@ -185,34 +332,42 @@ export function MapView({ onBack, onReset }: MapViewProps) {
       scale: "medium",
     } as any);
     setLiveConfigState(newConfig);
-    setToastMessage(`Weights updated — top recommendations refreshed.`);
+    setToastMessage(`Weights updated — scoring recalculated for ${activeCity.name}.`);
     setTimeout(() => setToastMessage(null), 4000);
   };
 
-  const handleExportCSV = () => exportCSV(scored, activeCity.name);
-  const handleExportPDF = () =>
-    exportPDF(
-      activeCity.name,
-      BUSINESS_PRESETS.find((p) => p.id === businessType)?.preset ?? "EV Charging",
-      top5.slice(0, 3),
-      liveConfigState.weights as unknown as Record<string, number>,
-      activeSelectedHex ? (activeSelectedHex.score100 || Math.round(activeSelectedHex.score * 100)) : 94,
-    );
+  const selectedResolved = useMemo(() => {
+    if (!activeSelectedHex) return { name: "Central District", highlight: "Urban Catchment" };
+    return resolveNeighborhood(activeCity.id, activeSelectedHex.center[1], activeSelectedHex.center[0]);
+  }, [activeCity.id, activeSelectedHex]);
 
-  const selectedLocIndex = Math.max(0, top5.findIndex((h) => h.h3 === activeSelectedHex?.h3));
-  const selectedLocName  = getSubareaName(selectedLocIndex);
-  const currentScore     = activeSelectedHex ? (activeSelectedHex.score100 || Math.round(activeSelectedHex.score * 100)) : 94;
-  const scoreInfo        = getScoreLabel(currentScore);
+  const currentScore = activeSelectedHex ? (activeSelectedHex.score100 || Math.round(activeSelectedHex.score * 100)) : 80;
+  const scoreInfo    = getScoreLabel(currentScore);
 
-  // Factor contributions — scale weight to a readable contribution number (min 1)
-  const factorContribs = [
-    { label: "Demand",           val: liveConfigState.weights.demand,        positive: true  },
-    { label: "Accessibility",    val: liveConfigState.weights.accessibility,  positive: true  },
-    { label: "Competition",      val: liveConfigState.weights.competition,    positive: false },
-    { label: "Land Suitability", val: liveConfigState.weights.landuse,        positive: true  },
-    { label: "Risk",             val: liveConfigState.weights.risk,           positive: false },
-  ];
-  const maxWeight = Math.max(...factorContribs.map(f => f.val), 1);
+  // Dynamic factor contributions for selected hex
+  const factorContribs = useMemo(() => {
+    if (activeSelectedHex && activeSelectedHex.parts && activeSelectedHex.parts.length > 0) {
+      return activeSelectedHex.parts.map((p) => {
+        const rawVal = p.contribution !== undefined ? p.contribution : (p.value - 50) * 0.3;
+        const rounded = Math.round(rawVal);
+        return {
+          label: p.label || p.layer,
+          val: Math.abs(rounded) || 1,
+          positive: rounded >= 0,
+        };
+      });
+    }
+    return [
+      { label: "Demand",           val: Math.round(liveConfigState.weights.demand * 0.4), positive: true  },
+      { label: "Accessibility",    val: Math.round(liveConfigState.weights.accessibility * 0.35), positive: true  },
+      { label: "Competition",      val: Math.round(liveConfigState.weights.competition * 0.25), positive: false },
+      { label: "Land Suitability", val: Math.round(liveConfigState.weights.landuse * 0.3), positive: true  },
+      { label: "Risk",             val: Math.round(liveConfigState.weights.risk * 0.2), positive: false },
+    ];
+  }, [activeSelectedHex, liveConfigState.weights]);
+
+  const topPositives = factorContribs.filter((f) => f.positive).slice(0, 2);
+  const currentBusinessName = BUSINESS_PRESETS.find((p) => p.id === businessType)?.preset || "Commercial";
 
   return (
     <div className="min-h-screen h-screen bg-[#F7FAFC] text-[#102A43] flex flex-col font-sans antialiased selection:bg-[#16C6B5] selection:text-white overflow-hidden">
@@ -245,7 +400,11 @@ export function MapView({ onBack, onReset }: MapViewProps) {
                 {cities.map((c) => (
                   <button
                     key={c.id}
-                    onClick={() => { setSelectedCityId(c.id); setCity(c); setIsCityMenuOpen(false); }}
+                    onClick={() => {
+                      setSelectedCityId(c.id);
+                      setCity(c);
+                      setIsCityMenuOpen(false);
+                    }}
                     className={`w-full text-left px-3 py-2 rounded-lg text-xs flex items-center justify-between ${c.id === selectedCityId ? "bg-[#e6faf8] text-[#063B45] font-bold" : "text-slate-600 hover:bg-slate-50"}`}
                   >
                     <span>{c.name}, {c.region}</span>
@@ -316,7 +475,7 @@ export function MapView({ onBack, onReset }: MapViewProps) {
             <div className="relative">
               <select
                 value={businessType}
-                onChange={(e) => setBusinessType(e.target.value)}
+                onChange={(e) => handleBusinessTypeChange(e.target.value)}
                 className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-800 appearance-none pr-7 focus:outline-none focus:border-[#16C6B5]"
               >
                 {BUSINESS_PRESETS.map((p) => (
@@ -337,13 +496,17 @@ export function MapView({ onBack, onReset }: MapViewProps) {
               onEditAnswers={onBack}
             />
           </div>
-
-
         </div>
 
         {/* ── CENTER MAP ── */}
         <div className="flex-1 flex flex-col min-w-0 relative">
-          <div className="flex-1 min-h-0 w-full">
+          <div className="flex-1 min-h-0 w-full relative">
+            {isLoadingScore && (
+              <div className="absolute top-4 right-4 z-20 bg-white/90 backdrop-blur-md px-3 py-1.5 rounded-xl border border-slate-200 shadow-sm flex items-center gap-2 text-xs font-semibold text-[#063B45]">
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-[#16C6B5]" />
+                <span>Scoring {activeCity.name}…</span>
+              </div>
+            )}
             <HexMap
               scored={scored}
               center={activeCity.center}
@@ -359,12 +522,13 @@ export function MapView({ onBack, onReset }: MapViewProps) {
             <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
               <span className="font-semibold text-slate-600">{activeCity.name}</span>
               <span>·</span>
-              <span>{scored.length} hexagons</span>
+              <span className="bg-[#e0f7f5] text-[#063B45] font-bold px-2 py-0.5 rounded-md font-mono">
+                {scored.length} hexagons
+              </span>
             </div>
             <div className="flex items-center gap-1.5">
-              {/* Ghost secondary actions */}
               <button
-                onClick={() => alert("Polygon tool: click on the map to define custom zone bounds.")}
+                onClick={() => alert("Polygon tool: draw a boundary to analyze custom trade zones.")}
                 className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 text-xs font-medium transition-colors"
               >
                 <Edit3 className="w-3.5 h-3.5" />
@@ -377,9 +541,7 @@ export function MapView({ onBack, onReset }: MapViewProps) {
                 <GitCompare className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">Compare Sites</span>
               </button>
-              {/* Divider */}
               <span className="w-px h-5 bg-slate-200 mx-0.5" />
-              {/* Secondary CTA — Talk to AI */}
               <button
                 onClick={() => setIsCopilotOpen(true)}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#16C6B5] text-[#075E68] hover:bg-[#e6faf8] text-xs font-semibold transition-colors"
@@ -387,7 +549,6 @@ export function MapView({ onBack, onReset }: MapViewProps) {
                 <Bot className="w-3.5 h-3.5" />
                 <span>Ask AI</span>
               </button>
-              {/* Primary CTA — Export */}
               <button
                 onClick={handleExportPDF}
                 className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-[#063B45] hover:bg-[#075E68] text-white text-xs font-semibold shadow-sm transition-colors"
@@ -402,23 +563,28 @@ export function MapView({ onBack, onReset }: MapViewProps) {
         {/* ── RIGHT DECISION PANEL ── */}
         <div className="flex-shrink-0 w-72 bg-white border-l border-slate-200/90 flex flex-col overflow-y-auto">
 
-          {/* Score Card — Primary Focus */}
+          {/* Score Card */}
           <div className="px-4 pt-4 pb-3 border-b border-slate-100">
             <div className="flex items-center gap-2 mb-3">
               <MapPin className="w-3.5 h-3.5 text-[#16C6B5]" />
               <div className="flex-1 min-w-0">
-                <div className="text-xs font-bold text-slate-800 truncate">{selectedLocName}, {activeCity.name}</div>
+                <div className="text-xs font-bold text-slate-800 truncate" title={`${selectedResolved.name}, ${activeCity.name}`}>
+                  {selectedResolved.name}, {activeCity.name}
+                </div>
                 <div className="text-[10px] text-slate-400">Selected Location</div>
               </div>
               <button
-                onClick={() => alert(`Saved hex to shortlist.`)}
+                onClick={() => {
+                  setToastMessage(`Saved ${selectedResolved.name} to shortlist.`);
+                  setTimeout(() => setToastMessage(null), 3000);
+                }}
                 className="text-[11px] text-[#16C6B5] font-semibold hover:underline whitespace-nowrap"
               >
                 Save
               </button>
             </div>
 
-            {/* Score display — flat, no inner box */}
+            {/* Score display */}
             <div className="flex items-center gap-4 mt-1 mb-1">
               <div className="flex items-baseline gap-1.5 flex-shrink-0">
                 <span className="text-5xl font-extrabold text-[#063B45] leading-none font-display tabular-nums">
@@ -443,20 +609,17 @@ export function MapView({ onBack, onReset }: MapViewProps) {
             <div className="mt-3">
               <div className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-2">Key Factors</div>
               <div className="space-y-1.5">
-                {factorContribs.map((f) => {
-                  const displayVal = Math.max(1, Math.round((f.val / maxWeight) * 32));
-                  return (
-                    <div key={f.label} className="flex items-center justify-between text-[11px]">
-                      <span className="text-slate-600">{f.label}</span>
-                      <span
-                        className="font-bold tabular-nums w-8 text-right"
-                        style={{ color: f.positive ? "#059669" : "#dc2626" }}
-                      >
-                        {f.positive ? "+" : "-"}{displayVal}
-                      </span>
-                    </div>
-                  );
-                })}
+                {factorContribs.map((f) => (
+                  <div key={f.label} className="flex items-center justify-between text-[11px]">
+                    <span className="text-slate-600">{f.label}</span>
+                    <span
+                      className="font-bold tabular-nums w-8 text-right"
+                      style={{ color: f.positive ? "#059669" : "#dc2626" }}
+                    >
+                      {f.positive ? "+" : "-"}{f.val}
+                    </span>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
@@ -468,10 +631,10 @@ export function MapView({ onBack, onReset }: MapViewProps) {
               <span className="text-xs font-bold text-slate-800">Why this location?</span>
             </div>
             <p className="text-[11px] text-slate-600 leading-relaxed">
-              Strong residential demand, good road connectivity and low competitor density make this
+              Strong {topPositives.map((p) => p.label.toLowerCase()).join(" and ")} density and favorable road connectivity make this
               location well-suited for your{" "}
               <strong className="text-slate-800">
-                {BUSINESS_PRESETS.find((p) => p.id === businessType)?.preset}
+                {currentBusinessName}
               </strong>{" "}
               deployment.
             </p>
@@ -486,9 +649,9 @@ export function MapView({ onBack, onReset }: MapViewProps) {
             )}
           </div>
 
-          {/* Detail panel — hidden by default */}
+          {/* Detail panel */}
           {showDetailPanel && (
-            <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/50">
+            <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/50 animate-in fade-in duration-200">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-[11px] font-bold text-slate-700">Reachable Population</span>
                 <button
@@ -500,9 +663,9 @@ export function MapView({ onBack, onReset }: MapViewProps) {
               </div>
               <div className="grid grid-cols-3 gap-1.5 text-center">
                 {[
-                  { time: "10 min", pop: "2,48,000" },
-                  { time: "20 min", pop: "6,12,000" },
-                  { time: "30 min", pop: "12,40,000" },
+                  { time: "10 min", pop: activeCity.id === "ahmedabad" ? "4,20,000" : activeCity.id === "surat" ? "3,10,000" : "1,85,000" },
+                  { time: "20 min", pop: activeCity.id === "ahmedabad" ? "9,80,000" : activeCity.id === "surat" ? "7,40,000" : "4,60,000" },
+                  { time: "30 min", pop: activeCity.id === "ahmedabad" ? "18,50,000" : activeCity.id === "surat" ? "14,20,000" : "8,90,000" },
                 ].map((d) => (
                   <div key={d.time} className="bg-white rounded-xl p-2 border border-slate-200">
                     <div className="text-[10px] text-slate-500">{d.time}</div>
@@ -514,7 +677,7 @@ export function MapView({ onBack, onReset }: MapViewProps) {
               <div className="mt-2">
                 <div className="text-[11px] font-bold text-slate-700 mb-1">Score Distribution</div>
                 <div className="text-[10px] text-slate-500">
-                  {scored.filter(h => (h.score100 || Math.round(h.score * 100)) >= 80).length} high-potential hexes out of {scored.length}
+                  {scored.filter((h) => (h.score100 || Math.round(h.score * 100)) >= 75).length} high-potential hexes out of {scored.length}
                 </div>
               </div>
             </div>
@@ -537,16 +700,16 @@ export function MapView({ onBack, onReset }: MapViewProps) {
 
             <div className="space-y-1">
               {top5.slice(0, 3).map((h, i) => {
-                const scoreVal  = h.score100 || Math.round(h.score * 100);
+                const scoreVal   = h.score100 || Math.round(h.score * 100);
                 const isSelected = activeSelectedHex?.h3 === h.h3;
-                const locName   = getSubareaName(i);
+                const loc        = resolveNeighborhood(activeCity.id, h.center[1], h.center[0], i + 1);
                 return (
                   <button
                     key={h.h3}
                     onClick={() => selectHex(h.h3)}
                     className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border text-left transition-all ${
                       isSelected
-                        ? "bg-[#e6faf8] border-[#b2eceb]"
+                        ? "bg-[#e6faf8] border-[#b2eceb] shadow-xs"
                         : "bg-white border-slate-100 hover:bg-slate-50 hover:border-slate-200"
                     }`}
                   >
@@ -556,13 +719,13 @@ export function MapView({ onBack, onReset }: MapViewProps) {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1">
                         <MapPin className="w-2.5 h-2.5 text-[#16C6B5] flex-shrink-0" />
-                        <span className="text-[11px] font-semibold text-slate-800 truncate">{locName}</span>
+                        <span className="text-[11px] font-semibold text-slate-800 truncate">{loc.name}</span>
                       </div>
-                      <div className="text-[10px] text-slate-400 truncate mt-0.5">{getKeyAdvantage(i)}</div>
+                      <div className="text-[10px] text-slate-400 truncate mt-0.5">{loc.highlight}</div>
                     </div>
                     <span
                       className={`text-[11px] font-bold px-2 py-0.5 rounded-lg flex-shrink-0 ${
-                        scoreVal >= 80 ? "bg-[#e0f7f5] text-[#063B45]" : "bg-amber-100 text-amber-800"
+                        scoreVal >= 80 ? "bg-[#e0f7f5] text-[#063B45]" : scoreVal >= 60 ? "bg-teal-50 text-teal-800" : "bg-amber-100 text-amber-800"
                       }`}
                     >
                       {scoreVal}
@@ -638,7 +801,7 @@ export function MapView({ onBack, onReset }: MapViewProps) {
               <CompareTab
                 candidates={top5.slice(0, 3)}
                 onRemove={(h3) => console.log("remove", h3)}
-                business={BUSINESS_PRESETS.find((p) => p.id === businessType)?.preset ?? "EV Charging"}
+                business={BUSINESS_PRESETS.find((p) => p.id === businessType)?.preset ?? "Healthcare"}
               />
             </div>
           </div>

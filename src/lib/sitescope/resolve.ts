@@ -281,6 +281,40 @@ export function resolveAnswers(answers: Answers): ResolveResult {
   }
 
   normalise(config.weights);
+
+  // Compute 0-100 MCDA factor weights
+  const pop = config.weights.population ?? 0.2;
+  const foot = config.weights.footfall ?? 0.2;
+  const access = config.weights.accessibility ?? 0.15;
+  const compWeight = config.weights.competition ?? 0.15;
+  const compl = config.weights.complementary ?? 0.15;
+  const rent = config.weights.rent ?? 0.15;
+
+  const wDemand = Math.round((pop + foot) * 55);
+  const wAccess = Math.round(access * 100);
+  const wCompl = Math.round(compl * 100);
+  const wComp = Math.round(compWeight * 100);
+  const wLanduse = Math.round(compl * 50 + 10);
+  const wRisk = Math.round(rent * 60 + 5);
+
+  (config.weights as any).demand = wDemand;
+  (config.weights as any).accessibility = wAccess;
+  (config.weights as any).complementary = wCompl;
+  (config.weights as any).competition = wComp;
+  (config.weights as any).landuse = wLanduse;
+  (config.weights as any).risk = wRisk;
+
+  (config as any).preset = pick("q1") || "retail_store";
+  (config as any).decay = {
+    type: config.isochroneMode === "walk" ? "exponential" : "gaussian",
+    d0_km: Number(((config.decayD0 || 1200) / 1000).toFixed(2)),
+  };
+  (config as any).competition = {
+    mode: config.competitionMode === "cluster" ? "cluster_bonus" : "penalise",
+    radius_km: Number(((config.competitionRadius || 1000) / 1000).toFixed(2)),
+    saturation: 5.0,
+  };
+
   return { config, interpretation, fallbackUsed };
 }
 
