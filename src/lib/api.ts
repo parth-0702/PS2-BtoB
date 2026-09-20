@@ -151,7 +151,13 @@ export async function fetchSensitivity(cityId: string, config?: object): Promise
   return post("/ai/sensitivity", { city_id: cityId, config, n_simulations: 100, top_n: 15 });
 }
 
-export async function downloadReport(cityId: string, business: string = "Retail Store", config?: object, aiExplanation?: object): Promise<void> {
+export async function downloadReport(
+  cityId: string,
+  business: string = "Retail Store",
+  config?: object,
+  aiExplanation?: object,
+  selectedH3?: string | null,
+): Promise<void> {
   const resp = await fetch(`${BASE_URL}/analysis/report`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -160,6 +166,7 @@ export async function downloadReport(cityId: string, business: string = "Retail 
       business_type: business,
       config: config || {},
       ai_explanation: aiExplanation,
+      h3: selectedH3 || undefined,
     }),
   });
   if (!resp.ok) throw new Error("Report download failed");

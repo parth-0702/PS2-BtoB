@@ -229,10 +229,10 @@ def generate_pdf_report(
             Paragraph("<b>H3 Index</b>", body_style),
             Paragraph("<b>Score</b>", body_style),
             Paragraph("<b>Demand</b>", body_style),
-            Paragraph("<b>Transit</b>", body_style),
-            Paragraph("<b>Footfall</b>", body_style),
-            Paragraph("<b>Flood Risk</b>", body_style),
-            Paragraph("<b>Zoning</b>", body_style),
+            Paragraph("<b>Accessibility</b>", body_style),
+            Paragraph("<b>Competition</b>", body_style),
+            Paragraph("<b>Land Use</b>", body_style),
+            Paragraph("<b>Risk</b>", body_style),
         ]
     ]
 
@@ -241,23 +241,23 @@ def generate_pdf_report(
         h3_short = s.get("h3", "")[:12] + "..."
         sc = f"{s.get('score', 0):.1f}"
         dm = f"{s.get('sub_demand', 0):.0f}"
-        tr = f"{s.get('sub_transit', 0):.0f}"
-        ff = f"{s.get('sub_footfall', 0):.0f}"
-        fl = f"{s.get('flood_susceptibility', 0):.2f}"
-        lu = s.get("landuse_dominant", "mixed")[:8]
+        ac = f"{s.get('sub_accessibility', 0):.0f}"
+        cp = f"{s.get('sub_competition', 0):.0f}"
+        lu = f"{s.get('sub_landuse', 0):.0f}"
+        fl = f"{s.get('sub_risk', 0):.0f}"
 
         table_data.append([
             Paragraph(rank_label, body_style),
             Paragraph(h3_short, body_style),
             Paragraph(f"<b>{sc}</b>", body_style),
             Paragraph(dm, body_style),
-            Paragraph(tr, body_style),
-            Paragraph(ff, body_style),
-            Paragraph(fl, body_style),
+            Paragraph(ac, body_style),
+            Paragraph(cp, body_style),
             Paragraph(lu, body_style),
+            Paragraph(fl, body_style),
         ])
 
-    sites_table = Table(table_data, colWidths=[35, 95, 45, 50, 45, 50, 60, 60])
+    sites_table = Table(table_data, colWidths=[35, 95, 45, 55, 60, 55, 45, 45])
     sites_table.setStyle(
         TableStyle([
             ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#065f46")),

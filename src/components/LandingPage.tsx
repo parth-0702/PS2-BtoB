@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import * as maplibregl from "maplibre-gl";
+import "maplibre-gl/dist/maplibre-gl.css";
 import {
-  MapPin, ArrowRight, Play, Check, ChevronDown, CheckCircle2,
-  Users, Route, Store, Layers, ShieldAlert, Globe, Compass,
+  MapPin, ArrowRight, Check, ChevronDown, CheckCircle2,
+  Users, Route, Store, Layers, ShieldAlert, Compass,
   Building2, ShoppingCart, Zap, Stethoscope, GraduationCap, Truck,
-  Sparkles, X
 } from "lucide-react";
 import { listCities } from "@/lib/sitescope/mock-data";
 import { useSiteScope } from "@/lib/sitescope/store";
@@ -13,12 +14,69 @@ interface LandingPageProps {
   onStart: (selectedCity: City) => void;
 }
 
+function LandingMap({ city }: { city: City }) {
+  const mapContainerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!mapContainerRef.current) return;
+
+    const map = new maplibregl.Map({
+      container: mapContainerRef.current,
+      style: {
+        version: 8,
+        sources: {
+          "india-satellite": {
+            type: "raster",
+            tiles: [
+              "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+            ],
+            tileSize: 256,
+            attribution: "Esri, Maxar, Earthstar Geographics",
+          },
+        },
+        layers: [
+          {
+            id: "india-satellite-layer",
+            type: "raster",
+            source: "india-satellite",
+            paint: { "raster-opacity": 0.86 },
+          },
+        ],
+      },
+      center: [78.9629, 22.5937],
+      zoom: 4.35,
+      minZoom: 3.2,
+      maxZoom: 7,
+      attributionControl: false,
+      interactive: false,
+    });
+
+    map.on("load", () => {
+      new maplibregl.Marker({ color: "#10b981" })
+        .setLngLat(city.center)
+        .addTo(map);
+    });
+
+    return () => map.remove();
+  }, [city]);
+
+  return (
+    <div className="absolute inset-0">
+      <div ref={mapContainerRef} className="h-full w-full" />
+      <div className="absolute inset-0 bg-[#020b16]/35 mix-blend-multiply pointer-events-none" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_45%,transparent_22%,rgba(2,11,22,0.52)_100%)] pointer-events-none" />
+      <div className="absolute bottom-3 left-3 rounded-md bg-[#071321]/85 px-2 py-1 text-[9px] text-slate-300 backdrop-blur-sm">
+        Real satellite imagery · {city.name}
+      </div>
+    </div>
+  );
+}
+
 export function LandingPage({ onStart }: LandingPageProps) {
   const cities = listCities();
   const { city, setCity } = useSiteScope();
   const [selectedCityId, setSelectedCityId] = useState<string>(city?.id ?? cities[0]?.id ?? "surat");
   const [isCityDropdownOpen, setIsCityDropdownOpen] = useState(false);
-  const [showDemoModal, setShowDemoModal] = useState(false);
 
   // Live Layers toggle state in Hero
   const [liveLayers, setLiveLayers] = useState({
@@ -54,22 +112,7 @@ export function LandingPage({ onStart }: LandingPageProps) {
       <header className="sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-slate-200/80 px-6 lg:px-12 py-3.5 flex items-center justify-between">
         {/* Brand Logo */}
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#059669] to-[#0f766e] flex items-center justify-center shadow-md shadow-emerald-700/15">
-            {/* Hexagon icon */}
-            <svg className="w-5 h-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
-              <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
-              <line x1="12" y1="22.08" x2="12" y2="12" />
-            </svg>
-          </div>
-          <div>
-            <div className="font-display font-bold text-lg text-[#0f172a] tracking-tight leading-none">
-              SiteScope
-            </div>
-            <div className="text-[10px] font-medium text-slate-500 tracking-tight mt-0.5">
-              Location Intelligence. Real Opportunities.
-            </div>
-          </div>
+          <img src="/sitescope-logo.svg" alt="SiteScope" className="h-12 w-auto" />
         </div>
 
 
@@ -134,9 +177,9 @@ export function LandingPage({ onStart }: LandingPageProps) {
           }}
         />
 
-        <div className="relative max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-10 items-center">
+        <div className="relative max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-12 gap-8 lg:gap-10 items-center">
           {/* Left Column: Headlines & Stats */}
-          <div className="lg:col-span-6 space-y-6">
+          <div className="md:col-span-6 space-y-6">
             <div className="inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-[#0f766e]">
               <span className="w-1.5 h-1.5 rounded-full bg-[#059669]" />
               Geospatial Intelligence for a Smarter Tomorrow
@@ -164,15 +207,6 @@ export function LandingPage({ onStart }: LandingPageProps) {
                 <ArrowRight className="w-4 h-4" />
               </button>
 
-              <button
-                onClick={() => setShowDemoModal(true)}
-                className="flex items-center gap-2 px-5 py-3.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 font-semibold text-sm border border-slate-200/90 shadow-sm transition-all"
-              >
-                <div className="w-5 h-5 rounded-full bg-slate-100 flex items-center justify-center">
-                  <Play className="w-2.5 h-2.5 text-slate-700 fill-slate-700 ml-0.5" />
-                </div>
-                <span>Watch Demo</span>
-              </button>
             </div>
 
             {/* Stats Row */}
@@ -205,7 +239,7 @@ export function LandingPage({ onStart }: LandingPageProps) {
           </div>
 
           {/* Right Column: Interactive 3D Spatial Globe / Heatmap Card */}
-          <div className="lg:col-span-6 relative flex items-center justify-center">
+          <div className="md:col-span-6 relative flex items-center justify-center">
             {/* Outer stylized globe container */}
             <div className="relative w-full aspect-[16/11] max-w-[620px] rounded-3xl bg-gradient-to-br from-[#0c1626] via-[#091522] to-[#040e1a] p-4 shadow-2xl border border-slate-700/50 overflow-hidden flex flex-col justify-between">
               {/* Globe background mesh texture */}
@@ -218,50 +252,7 @@ export function LandingPage({ onStart }: LandingPageProps) {
                 }}
               />
 
-              {/* Realistic Map Canvas / Hexagon Map Visualisation over India Region */}
-              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                <svg className="w-[88%] h-[88%] opacity-85" viewBox="0 0 500 400" fill="none">
-                  {/* Subtle earth contours */}
-                  <ellipse cx="250" cy="200" rx="210" ry="170" stroke="rgba(56, 189, 248, 0.15)" strokeWidth="1.5" strokeDasharray="4 4" />
-                  <ellipse cx="250" cy="200" rx="170" ry="140" stroke="rgba(16, 185, 129, 0.2)" strokeWidth="1" />
-
-                  {/* India land polygon approximation */}
-                  <path
-                    d="M170,120 Q220,100 280,110 Q320,130 310,180 Q290,240 260,300 Q240,320 230,290 Q210,230 180,200 Q160,160 170,120 Z"
-                    fill="rgba(15, 23, 42, 0.7)"
-                    stroke="rgba(16, 185, 129, 0.4)"
-                    strokeWidth="1.5"
-                  />
-
-                  {/* Hexagon grid mesh over Gujarat / India */}
-                  {[
-                    { cx: 200, cy: 170, color: "#10b981", r: 16 },
-                    { cx: 225, cy: 160, color: "#10b981", r: 16 },
-                    { cx: 250, cy: 155, color: "#f59e0b", r: 16 },
-                    { cx: 275, cy: 165, color: "#ef4444", r: 16 },
-                    { cx: 215, cy: 190, color: "#10b981", r: 16 },
-                    { cx: 240, cy: 185, color: "#f97316", r: 16 },
-                    { cx: 265, cy: 195, color: "#ef4444", r: 16 },
-                    { cx: 230, cy: 215, color: "#10b981", r: 16 },
-                    { cx: 255, cy: 220, color: "#06b6d4", r: 16 },
-                    { cx: 220, cy: 245, color: "#10b981", r: 16 },
-                    { cx: 245, cy: 250, color: "#10b981", r: 16 },
-                  ].map((hex, i) => (
-                    <polygon
-                      key={i}
-                      points={`${hex.cx},${hex.cy - hex.r} ${hex.cx + hex.r * 0.86},${hex.cy - hex.r * 0.5} ${hex.cx + hex.r * 0.86},${hex.cy + hex.r * 0.5} ${hex.cx},${hex.cy + hex.r} ${hex.cx - hex.r * 0.86},${hex.cy + hex.r * 0.5} ${hex.cx - hex.r * 0.86},${hex.cy - hex.r * 0.5}`}
-                      fill={hex.color}
-                      fillOpacity="0.45"
-                      stroke={hex.color}
-                      strokeWidth="1.5"
-                    />
-                  ))}
-
-                  {/* Underserved Radar Ring */}
-                  <circle cx="215" cy="270" r="32" stroke="#10b981" strokeWidth="1.5" strokeDasharray="3 3" fill="rgba(16, 185, 129, 0.08)" />
-                  <circle cx="215" cy="270" r="4" fill="#10b981" />
-                </svg>
-              </div>
+              <LandingMap city={activeCity} />
 
               {/* Top Row: Floating Smart Tooltip Badges */}
               <div className="relative z-10 flex justify-between items-start">
@@ -655,49 +646,6 @@ export function LandingPage({ onStart }: LandingPageProps) {
         </div>
       </footer>
 
-      {/* ── Demo Modal (if clicked) ── */}
-      {showDemoModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in">
-          <div className="relative w-full max-w-2xl bg-white rounded-3xl p-6 shadow-2xl border border-slate-200">
-            <div className="flex items-center justify-between pb-4 border-b border-slate-100">
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-lg bg-emerald-100 flex items-center justify-center text-[#059669]">
-                  <Play className="w-3.5 h-3.5 fill-current" />
-                </div>
-                <h3 className="font-bold text-slate-900 text-sm">SiteScope Platform Overview</h3>
-              </div>
-              <button
-                onClick={() => setShowDemoModal(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-700"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="py-6 text-center space-y-3">
-              <div className="w-16 h-16 rounded-2xl bg-emerald-50 text-[#059669] flex items-center justify-center mx-auto shadow-inner">
-                <Sparkles className="w-8 h-8" />
-              </div>
-              <h4 className="font-bold text-lg text-slate-800">
-                End-to-End Location Intelligence in Action
-              </h4>
-              <p className="text-xs text-slate-500 max-w-md mx-auto leading-relaxed">
-                Watch how SiteScope scores 1000s of urban hexagons, derives multi-criteria weights, identifies Getis-Ord Gi* hotspots, and lets you speak with the AI Copilot.
-              </p>
-              <div className="pt-2">
-                <button
-                  onClick={() => {
-                    setShowDemoModal(false);
-                    handleLaunch();
-                  }}
-                  className="px-6 py-2.5 rounded-xl bg-[#064e3b] text-white text-xs font-bold hover:bg-[#047857] transition-all shadow"
-                >
-                  Try Interactive Live Demo
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

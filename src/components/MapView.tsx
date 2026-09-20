@@ -2,7 +2,7 @@ import { useMemo, useState, useCallback, useRef, useEffect } from "react";
 import {
   MapPin, Search, ChevronDown, CheckCircle2,
   SlidersHorizontal, Download,
-  GitCompare, Edit3, Bot, Sparkles, X,
+  GitCompare, Bot, Sparkles, X,
   TrendingUp, Activity, Check, ChevronRight,
   Users, Loader2,
 } from "lucide-react";
@@ -301,7 +301,13 @@ export function MapView({ onBack, onReset }: MapViewProps) {
     try {
       const { downloadReport } = await import("@/lib/api");
       const currentBusiness = BUSINESS_PRESETS.find((p) => p.id === businessType)?.preset ?? "Healthcare";
-      await downloadReport(activeCity.id, currentBusiness, { weights: liveConfigState.weights });
+      await downloadReport(
+        activeCity.id,
+        currentBusiness,
+        { weights: liveConfigState.weights },
+        undefined,
+        activeSelectedHex?.h3,
+      );
       setToastMessage("PDF dossier downloaded successfully!");
       setTimeout(() => setToastMessage(null), 3000);
     } catch {
@@ -341,6 +347,10 @@ export function MapView({ onBack, onReset }: MapViewProps) {
     return resolveNeighborhood(activeCity.id, activeSelectedHex.center[1], activeSelectedHex.center[0]);
   }, [activeCity.id, activeSelectedHex]);
 
+  const selectedCoordinates = activeSelectedHex
+    ? `${activeSelectedHex.center[1].toFixed(5)}, ${activeSelectedHex.center[0].toFixed(5)}`
+    : null;
+
   const currentScore = activeSelectedHex ? (activeSelectedHex.score100 || Math.round(activeSelectedHex.score * 100)) : 80;
   const scoreInfo    = getScoreLabel(currentScore);
 
@@ -377,11 +387,7 @@ export function MapView({ onBack, onReset }: MapViewProps) {
         {/* Left: Brand + City + Nav */}
         <div className="flex items-center gap-4">
           <button onClick={onBack} className="flex items-center gap-2 cursor-pointer flex-shrink-0">
-            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-[#087F8C] to-[#063B45] flex items-center justify-center shadow-sm">
-              <svg className="w-3.5 h-3.5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
-                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
-              </svg>
-            </div>
+            <img src="/sitescope-mark.svg" alt="" className="w-7 h-7 rounded-lg shadow-sm" />
             <span className="font-display font-bold text-sm text-[#063B45] leading-none">SiteScope</span>
           </button>
 
@@ -529,13 +535,6 @@ export function MapView({ onBack, onReset }: MapViewProps) {
             </div>
             <div className="flex items-center gap-1.5">
               <button
-                onClick={() => alert("Polygon tool: draw a boundary to analyze custom trade zones.")}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 text-xs font-medium transition-colors"
-              >
-                <Edit3 className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Draw Zone</span>
-              </button>
-              <button
                 onClick={() => setIsCompareModalOpen(true)}
                 className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 text-xs font-medium transition-colors"
               >
@@ -572,7 +571,9 @@ export function MapView({ onBack, onReset }: MapViewProps) {
                 <div className="text-xs font-bold text-slate-800 truncate" title={`${selectedResolved.name}, ${activeCity.name}`}>
                   {selectedResolved.name}, {activeCity.name}
                 </div>
-                <div className="text-[10px] text-slate-400">Selected Location</div>
+                <div className="text-[10px] text-slate-400">
+                  {selectedCoordinates ? `Selected hex · ${selectedCoordinates}` : "Selected Location"}
+                </div>
               </div>
               <button
                 onClick={() => {

@@ -383,6 +383,7 @@ def score_city_dataset(df: pd.DataFrame, cfg: ScoringConfig) -> tuple[pd.DataFra
         "blocked_hexes": int((~eligible).sum()),
         "avg_score": round(city_avg_score, 1),
         "mean_score": round(city_avg_score, 1),
+        "top_score": round(float(final_score.max()), 1) if len(final_score) else 0.0,
         "weights_used": {k: round(v * 100.0, 1) for k, v in w.items()},
         "city_subscore_means": {k: round(v * 100.0, 1) for k, v in city_means.items()},
         "risk_metadata": risk_meta,
