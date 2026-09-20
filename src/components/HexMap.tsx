@@ -427,26 +427,26 @@ layout: style.layout ?? {},
     markersRef.current.forEach((m) => m.remove());
     markersRef.current = [];
 
-    const selHex = hexList.find((h) => h.h3 === selH3);
-    if (selHex) {
+    const topRankedHex = topSitesList[0] ?? hexList.find((h) => h.h3 === selH3);
+    if (topRankedHex) {
       const el = document.createElement("div");
       el.className = "selected-marker-container";
       el.innerHTML = `
           <div style="display:flex;flex-direction:column;align-items:center;transform:translateY(-100%);cursor:pointer;">
           <div style="background:#063B45;color:#ffffff;font-family:sans-serif;font-size:11px;font-weight:700;padding:3px 8px;border-radius:12px;border:1px solid rgba(255,255,255,0.3);box-shadow:0 4px 12px rgba(0,0,0,0.35);display:flex;align-items:center;gap:4px;white-space:nowrap;">
             <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#16C6B5;"></span>
-            Score ${selHex.score100 || Math.round(selHex.score * 100)}
+            Score ${topRankedHex.score100 || Math.round(topRankedHex.score * 100)}
           </div>
           <div style="width:20px;height:20px;background:#075E68;border:3px solid #ffffff;border-radius:50%;box-shadow:0 2px 6px rgba(0,0,0,0.4);margin-top:2px;"></div>
         </div>
       `;
       markersRef.current.push(
-        new maplibregl.Marker({ element: el }).setLngLat(selHex.center).addTo(map)
+        new maplibregl.Marker({ element: el }).setLngLat(topRankedHex.center).addTo(map)
       );
     }
 
     const topHotspot = [...hexList].sort((a, b) => b.score - a.score)[0];
-    if (topHotspot && topHotspot.h3 !== selH3) {
+    if (topHotspot && topHotspot.h3 !== topRankedHex?.h3) {
       const el = document.createElement("div");
       el.innerHTML = `
         <div style="background:#dc2626;color:#ffffff;font-family:sans-serif;font-size:10px;font-weight:700;padding:3px 7px;border-radius:10px;border:1.5px solid #ffffff;box-shadow:0 3px 8px rgba(220,38,38,0.4);display:flex;align-items:center;gap:3px;cursor:pointer;white-space:nowrap;transform:translateY(-50%);">
@@ -460,7 +460,7 @@ layout: style.layout ?? {},
     }
 
     const underservedHex = hexList.find((h) => h.underserved);
-    if (underservedHex && underservedHex.h3 !== selH3 && underservedHex.h3 !== topHotspot?.h3) {
+    if (underservedHex && underservedHex.h3 !== topRankedHex?.h3 && underservedHex.h3 !== topHotspot?.h3) {
       const el = document.createElement("div");
       el.innerHTML = `
         <div style="background:#581c87;color:#f3e8ff;font-family:sans-serif;font-size:10px;font-weight:700;padding:3px 7px;border-radius:10px;border:1.5px solid #c084fc;box-shadow:0 3px 8px rgba(88,28,135,0.4);display:flex;align-items:center;gap:3px;cursor:pointer;white-space:nowrap;transform:translateY(-50%);">
@@ -501,7 +501,7 @@ layout: style.layout ?? {},
     } else {
       map.once("load", applyUpdate);
     }
-  }, [geojson, scored, selectedH3]);
+  }, [geojson, scored, selectedH3, topSitesList]);
 
   useEffect(() => {
     if (mapRef.current) {
