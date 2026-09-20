@@ -1,25 +1,120 @@
+/**
+ * export.ts — CSV and PDF export utilities for SiteScope.
+ */
+
 import type { ScoredHex } from "@/lib/sitescope/scoring";
-const escapeHtml = (v: unknown) => String(v).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]!));
-const csvValue = (v: unknown) => '"'+String(v).replace(/"/g,'""')+'"';
-export function exportCSV(hexes:ScoredHex[],cityName:string):void {
-  const factors=["demand","accessibility","complementary","competition","landuse","risk","footfall","rent"];
-  const headers=["h3","latitude","longitude","score_100","eligible","blocked_by",...factors,"data_source"];
-  const rows=[...hexes].sort((a,b)=>b.score-a.score).map(h=>[
-    h.h3,h.center[1].toFixed(6),h.center[0].toFixed(6),h.score100,h.eligible?"yes":"no",
-    h.blockedBy.join("; "),...factors.map(k=>h.subscores[k]??""),"Synthetic demo / local imports",
-  ]);
-  download([headers,...rows].map(row=>row.map(csvValue).join(",")).join("\r\n"),`sitescope_${cityName.toLowerCase()}_${Date.now()}.csv`,"text/csv;charset=utf-8");
+import { formatScore, formatLocationName } from "@/lib/formatters";
+
+// ── CSV ───────────────────────────────────────────────────────────────────────
+
+export function exportCSV(hexes: ScoredHex[], cityName: string): void {
+  const headers = [
+    "h3", "location_name", "lat", "lng", "score", "eligible", "blocked_by",
+    "sub_demand", "sub_accessibility", "sub_complementary",
+    "sub_competition", "sub_landuse", "sub_risk",
+  ];
+
+  const rows = hexes
+    .sort((a, b) => b.score - a.score)
+    .map((h, i) => [
+      h.h3,
+      formatLocationName(i),
+      h.center[1].toFixed(6),
+      h.center[0].toFixed(6),
+      (h.score100 || formatScore(h.score)).toString(),
+      h.eligible ? "yes" : "no",
+      "", // blocked_by — placeholder
+      ...Object.values(h.subscores || {}).map((v) => Number(v).toFixed(0)),
+    ]);
+
+  const csv = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+  _download(csv, `sitescope_${cityName.toLowerCase()}_${Date.now()}.csv`, "text/csv");
 }
-export function exportPDF(cityName:string,business:string,top3:ScoredHex[],weights:Record<string,number>,average:number, context?:{scenario:unknown;constraints:string[];total:number;eligible:number}):void {
-  const w=window.open("","_blank");
-  if(!w){window.alert("Allow pop-ups to open the printable report.");return;}
-  const total=Object.values(weights).reduce((s,v)=>s+v,0)||1;
-  const rows=top3.map((h,i)=>`<tr><td>${i+1}</td><td>${escapeHtml(h.h3)}<br><small>${h.center[1].toFixed(5)}, ${h.center[0].toFixed(5)}</small></td><td><strong>${h.score100}/100</strong></td><td>${h.eligible?"Eligible":escapeHtml(h.blockedBy.join("; "))}</td></tr>`).join("");
-  const factors=Object.entries(weights).map(([k,v])=>`<tr><td>${escapeHtml(k)}</td><td>${(v/total*100).toFixed(1)}%</td></tr>`).join("");
-  const details=top3.map(h=>`<section><h3>Site ${escapeHtml(h.h3)}</h3><p>${escapeHtml(h.raw.landuse)} zone · Neighborhood stability: ${h.robustness}</p>${h.parts.map(p=>`<div class="factor"><span>${escapeHtml(p.label)}</span><span>${(p.contribution*100).toFixed(1)} points · factor ${Math.round(p.value*100)}/100</span></div>`).join("")}</section>`).join("");
-  w.document.write(`<!doctype html><html lang="en"><head><meta charset="utf-8"><title>SiteScope — ${escapeHtml(cityName)} report</title><style>
-    *{box-sizing:border-box}body{font:13px/1.6 system-ui,sans-serif;color:#102b52;max-width:850px;margin:45px auto;padding:0 28px}header{border-bottom:2px solid #27945b;padding-bottom:20px}h1{font-size:34px;margin:0}h2{font-size:20px;margin-top:30px}h3{font-size:14px}.meta,small{color:#657994}.badge{background:#edf5ff;padding:12px;border-radius:6px;margin:22px 0}table{border-collapse:collapse;width:100%}td,th{text-align:left;border-bottom:1px solid #e4ebf5;padding:11px 7px}th{background:#f4f8ff}.factor{display:flex;justify-content:space-between;border-bottom:1px solid #e4ebf5;padding:5px}section{break-inside:avoid;margin-bottom:24px}pre{white-space:pre-wrap;font-size:10px;background:#f5f8ff;padding:15px}button{padding:10px 20px;background:#102b52;color:white;border:0;border-radius:6px;cursor:pointer}@media print{body{margin:0}button{display:none}thead{display:table-header-group}tr{break-inside:avoid}}
-    </style></head><body><header><h1>SiteScope.</h1><p>Location readiness report · ${escapeHtml(cityName)}</p><p class="meta">${escapeHtml(business)} · ${new Date().toLocaleString()} · Average eligible score ${average.toFixed(1)}/100</p></header><div class="badge">Synthetic demonstration data with optional user-imported attributes. Scores support comparison and are not a forecast of business success.</div><button onclick="window.print()">Print / Save as PDF</button><h2>Recommended locations</h2><p>${context?`${context.eligible} eligible of ${context.total} analyzed cells.`:""} Rankings exclude sites that violate active constraints.</p><table><thead><tr><th>Rank</th><th>Location</th><th>Readiness</th><th>Status</th></tr></thead><tbody>${rows||'<tr><td colspan="4">No eligible sites match the current settings.</td></tr>'}</tbody></table><h2>Evidence behind the scores</h2>${details}<h2>Normalized scoring priorities</h2><table><thead><tr><th>Factor</th><th>Weight</th></tr></thead><tbody>${factors}</tbody></table>${context?`<h2>Scenario and constraints</h2><pre>${escapeHtml(JSON.stringify(context,null,2))}</pre>`:""}<h2>Method and limitations</h2><p>Readiness is the normalized weighted sum of factor values. Competition uses competitor proximity, a configurable search radius and exponential distance decay. Hard constraints determine eligibility. Population and environmental inputs are synthetic unless replaced by imports. Spatial hot spots use exploratory Getis-Ord Gi* statistics; stability describes local score variation, not predictive confidence.</p><p class="meta">Prepared by SiteScope · WGS84 / H3 geospatial analysis</p></body></html>`);
+// ── PDF (print) ───────────────────────────────────────────────────────────────
+
+export function exportPDF(
+  cityName: string,
+  businessSummary: string,
+  top3: ScoredHex[],
+  weights: Record<string, number>,
+  avgScore: number,
+): void {
+  const w = window.open("", "_blank");
+  if (!w) return;
+
+  const formattedAvgScore = formatScore(avgScore);
+
+  const top3Rows = top3
+    .map(
+      (h, i) => `
+      <tr>
+        <td>${i + 1}</td>
+        <td><strong>${formatLocationName(i)}</strong> <span style="color:#64748b; font-size: 0.85em;">(${h.h3.slice(-6)})</span></td>
+        <td><strong>${h.score100 || formatScore(h.score)} / 100</strong></td>
+        <td>${Object.entries(h.subscores || {})
+          .map(([k, v]) => `${k}: ${Number(v).toFixed(0)}`)
+          .join(", ")}</td>
+      </tr>`,
+    )
+    .join("");
+
+  const weightsRows = Object.entries(weights)
+    .map(([k, v]) => `<tr><td>${k}</td><td>${v}%</td></tr>`)
+    .join("");
+
+  w.document.write(`
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SiteScope Report — ${cityName}</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 2.5rem; color: #0f172a; max-width: 850px; margin: auto; }
+  h1 { color: #0f172a; border-bottom: 2px solid #0d9488; padding-bottom: .5rem; font-size: 1.75rem; }
+  h2 { color: #334155; margin-top: 2rem; font-size: 1.25rem; }
+  table { width: 100%; border-collapse: collapse; margin-top: 1rem; font-size: 0.9rem; }
+  th, td { border: 1px solid #e2e8f0; padding: .65rem .85rem; text-align: left; }
+  th { background: #f8fafc; color: #475569; font-weight: 600; }
+  .badge { background: #f0fdf4; color: #166534; padding: .3rem .75rem; border-radius: 9999px; font-size: .8rem; border: 1px solid #bbf7d0; display: inline-block; margin-top: 0.5rem; }
+  .meta { color: #64748b; font-size: .95rem; margin-bottom: 0.5rem; }
+  @media print { body { padding: 0; } }
+</style>
+</head>
+<body>
+<h1>🏙️ SiteScope Location Intelligence Report</h1>
+<p class="meta">Target City: <strong>${cityName}</strong> &nbsp;|&nbsp; Business Format: <strong>${businessSummary}</strong> &nbsp;|&nbsp; Top Site Score: <strong>${formattedAvgScore}/100</strong></p>
+<p class="meta">Generated: ${new Date().toLocaleString()}</p>
+<span class="badge">✓ Production Location Analysis</span>
+
+<h2>Top Recommended Locations</h2>
+<table>
+  <thead><tr><th>Rank</th><th>Location / Area</th><th>Readiness Score</th><th>Factor Breakdown</th></tr></thead>
+  <tbody>${top3Rows}</tbody>
+</table>
+
+<h2>Scoring Weight Configuration</h2>
+<table>
+  <thead><tr><th>Factor</th><th>Weight Percentage</th></tr></thead>
+  <tbody>${weightsRows}</tbody>
+</table>
+
+<h2>Data Methodology</h2>
+<p style="font-size: 0.85rem; color: #64748b;">Spatial scoring combines demographic density, road accessibility, competitor proximity, land-use zoning, and environmental risk layers.</p>
+
+<script>window.onload = () => { window.print(); }</script>
+</body>
+</html>`);
   w.document.close();
 }
-function download(content:string,filename:string,mime:string){const url=URL.createObjectURL(new Blob(["\uFEFF"+content],{type:mime}));const a=document.createElement("a");a.href=url;a.download=filename;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
+
+// ── Helper ────────────────────────────────────────────────────────────────────
+
+function _download(content: string, filename: string, mime: string): void {
+  const blob = new Blob([content], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
