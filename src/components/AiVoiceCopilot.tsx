@@ -5,6 +5,7 @@ import {
 } from "lucide-react";
 import type { ScoredHex } from "@/lib/sitescope/scoring";
 import type { City, ScoringConfig } from "@/lib/sitescope/types";
+import { resolveNeighborhood } from "@/lib/sitescope/neighborhoods";
 
 interface AiVoiceCopilotProps {
   city: City;
@@ -146,12 +147,15 @@ export function AiVoiceCopilot({
   const generateResponse = async (query: string): Promise<string> => {
     const q = query.toLowerCase();
     const preset = config?.scale || "retail business";
+    const getPlaceName = (hex: ScoredHex) =>
+      resolveNeighborhood(city.id, hex.center[1], hex.center[0]).name;
 
     // 1. Question about selected/highlighted area
     if (q.includes("highlighted") || q.includes("selected") || q.includes("this area") || q.includes("proper for my business") || q.includes("why this area")) {
       if (!selectedHex) {
         const best = top3[0];
-        return `You haven't selected a specific hexagon on the map yet! However, looking at our top-ranked site **Hex ${best ? best.h3.substring(0, 8) : "center"}** (Score: **${best ? (best.score100 || Math.round(best.score * 100)) : 92}/100**), it provides the highest footfall and optimum accessibility in ${city.name} with manageable competitor saturation. Try clicking any hex on the map to get a localized breakdown!`;
+        const bestPlace = best ? getPlaceName(best) : "the city center";
+        return `You have not selected a specific area yet. The strongest current opportunity is ${bestPlace}, with a score of ${best ? (best.score100 || Math.round(best.score * 100)) : 92} out of 100. It combines strong demand and accessibility with manageable competition. Select any hexagon on the map for a more detailed local assessment.`;
       }
 
       const scorePct = selectedHex.score100 || Math.round((selectedHex.score || 0) * 100);
@@ -165,20 +169,19 @@ export function AiVoiceCopilot({
       const cmp = selectedHex.competition ?? selectedHex.subscores?.['competition'] ?? 0.4;
       const fld = selectedHex.floodRisk ?? selectedHex.subscores?.['risk'] ?? 0.2;
 
-      let answer = `**Hex #${selectedHex.h3.substring(0, 8)}** achieves an overall Site Readiness Score of **${scorePct}/100**.\n\n`;
+      const placeName = getPlaceName(selectedHex);
+      let answer = `${placeName} has an overall Site Readiness Score of ${scorePct} out of 100.\n\n`;
 
       if (scorePct >= 75) {
-        answer += `🌟 **Why it's proper for your business:**\n`;
-        answer += `• **Strong Footfall & Demand:** Scores ${Math.round(ff > 1 ? ff : ff * 100)}% in pedestrian activity, ensuring continuous natural customer discovery.\n`;
-        answer += `• **Transit Reach:** Road accessibility is rated at ${Math.round(acc > 1 ? acc : acc * 100)}%, allowing easy customer travel.\n`;
-        if (isHotspot) answer += `• **Statistical Hotspot:** Getis-Ord Gi* analysis confirms this cell is in a 95%+ confidence high-demand cluster.\n`;
-        if (isUnderserved) answer += `• **Underserved Opportunity:** High footfall with relatively low direct competition makes it prime for expansion.\n`;
+        answer += `Why it stands out:\n`;
+        answer += `• Demand is strong, with a ${Math.round(ff > 1 ? ff : ff * 100)}% footfall indicator.\n`;
+        answer += `• Accessibility is rated ${Math.round(acc > 1 ? acc : acc * 100)}%, making the area easy for customers to reach.\n`;
+        if (isHotspot) answer += `• It sits within a statistically significant high-demand cluster.\n`;
+        if (isUnderserved) answer += `• It appears underserved, leaving room for a new business to grow.\n`;
       } else if (scorePct >= 50) {
-        answer += `⚖️ **Balanced Assessment:**\n`;
-        answer += `This location has moderate potential. It features ${Math.round(pop > 1 ? pop : pop * 100)}% residential density, but rent is indexed at ${Math.round(rnt > 1 ? rnt : rnt * 100)}% and competitor density is ${Math.round(cmp > 1 ? cmp : cmp * 100)}%.\n`;
+        answer += `This is a balanced opportunity. It has ${Math.round(pop > 1 ? pop : pop * 100)}% residential demand, while rent is indexed at ${Math.round(rnt > 1 ? rnt : rnt * 100)}% and competitor density at ${Math.round(cmp > 1 ? cmp : cmp * 100)}%.\n`;
       } else {
-        answer += `⚠️ **Caution Factors:**\n`;
-        answer += `This area scored below benchmark (${scorePct}/100) primarily due to lower footfall (${Math.round(ff > 1 ? ff : ff * 100)}%) and higher relative operational costs or flood risk (${Math.round(fld > 1 ? fld : fld * 100)}%).`;
+        answer += `This area is below the current benchmark. The main concerns are lower footfall (${Math.round(ff > 1 ? ff : ff * 100)}%) and higher relative operating costs or flood risk (${Math.round(fld > 1 ? fld : fld * 100)}%).`;
       }
 
       return answer;
@@ -187,13 +190,13 @@ export function AiVoiceCopilot({
     // 2. Question about Top recommendations
     if (q.includes("top") || q.includes("best") || q.includes("recommend") || q.includes("where should i open")) {
       if (top3.length === 0) return `Based on current scoring parameters, no eligible sites met all strict thresholds. Try adjusting weight sliders.`;
-      let res = `Here are the **Top 3 Recommended Locations** in ${city.name}:\n\n`;
+      let res = `Here are the three strongest opportunities in ${city.name}:\n\n`;
       top3.forEach((h, i) => {
         const ff = h.footfall ?? h.subscores?.['footfall'] ?? 0.5;
         const acc = h.accessibility ?? h.subscores?.['accessibility'] ?? 0.5;
         const rnt = h.rent ?? h.subscores?.['rent'] ?? 0.5;
-        res += `**${i + 1}. Hex #${h.h3.substring(0, 8)}** — Score: **${h.score100 || Math.round(h.score * 100)}/100**\n`;
-        res += `   Footfall: ${Math.round(ff > 1 ? ff : ff * 100)}% · Accessibility: ${Math.round(acc > 1 ? acc : acc * 100)}% · Rent: ${Math.round(rnt > 1 ? rnt : rnt * 100)}%\n`;
+        res += `${i + 1}. ${getPlaceName(h)} — score ${h.score100 || Math.round(h.score * 100)} out of 100.\n`;
+        res += `   Demand: ${Math.round(ff > 1 ? ff : ff * 100)}% · Accessibility: ${Math.round(acc > 1 ? acc : acc * 100)}% · Rent index: ${Math.round(rnt > 1 ? rnt : rnt * 100)}%\n`;
       });
       res += `\nWould you like me to highlight the #1 location on the map?`;
       return res;
@@ -323,7 +326,7 @@ export function AiVoiceCopilot({
         <div className="bg-sky-950/40 border-b border-sky-500/20 px-3 py-1.5 flex items-center justify-between text-[11px]">
           <div className="flex items-center gap-1.5 text-sky-300 truncate">
             <MapPin className="w-3 h-3 text-sky-400 flex-shrink-0" />
-            <span>Active Hex: <strong>#{selectedHex.h3.substring(0, 8)}</strong> (Score: {Math.round(selectedHex.score * 100)})</span>
+            <span>Active area: <strong>{resolveNeighborhood(city.id, selectedHex.center[1], selectedHex.center[0]).name}</strong> (Score: {selectedHex.score100 || Math.round(selectedHex.score * 100)})</span>
           </div>
           <button
             onClick={() => handleSendMessage("Why is the highlighted area proper for my business?")}
