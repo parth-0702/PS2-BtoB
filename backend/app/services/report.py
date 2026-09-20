@@ -18,6 +18,73 @@ from reportlab.platypus import (
 )
 
 
+CITY_PLACES: dict[str, list[tuple[str, float, float]]] = {
+    "ahmedabad": [
+        ("Navrangpura / CG Road", 23.0365, 72.5611),
+        ("SG Highway / Bodakdev", 23.0489, 72.5085),
+        ("Vastrapur / IIM Road", 23.0358, 72.5293),
+        ("Prahlad Nagar / Anandnagar", 23.0125, 72.5115),
+        ("Ashram Road / Riverfront", 23.0305, 72.5714),
+        ("Satellite / Shyamal", 23.0185, 72.5285),
+        ("Maninagar / Kankaria", 22.9985, 72.6025),
+        ("Chandkheda / Motera", 23.1085, 72.5855),
+        ("Gota / Vandematram", 23.0985, 72.5355),
+        ("Thaltej / Shilaj", 23.0555, 72.4925),
+    ],
+    "surat": [
+        ("Vesu / VIP Road", 21.1425, 72.7755),
+        ("Adajan / LP Savani", 21.1985, 72.7925),
+        ("Athwa Lines / Ghod Dod Road", 21.1755, 72.8085),
+        ("Piplod / Dumas Road", 21.1555, 72.7685),
+        ("Ring Road / Textile Market", 21.1885, 72.8455),
+        ("Pal / Gaurav Path", 21.1825, 72.7715),
+        ("City Light / Althan", 21.1625, 72.7955),
+        ("Varachha / Mini Bazar", 21.2185, 72.8625),
+        ("Katargam / Gotalawadi", 21.2285, 72.8255),
+    ],
+    "vadodara": [
+        ("Alkapuri / RC Dutt Road", 22.3125, 73.1755),
+        ("Sayajigunj / Station Road", 22.3085, 73.1895),
+        ("Old Padra Road / Akota", 22.2985, 73.1625),
+        ("Fatehgunj / Camp", 22.3255, 73.1885),
+        ("Gotri / Vasna Road", 22.3155, 73.1355),
+        ("Manjalpur / Makarpura", 22.2685, 73.1955),
+        ("Karelibaug / VIP Road", 22.3285, 73.2085),
+        ("Ellora Park / Subhanpura", 22.3215, 73.1615),
+        ("Sama / Harni Road", 22.3425, 73.2025),
+    ],
+    "rajkot": [
+        ("Yagnik Road / Dr. Yagnik Marg", 22.2985, 70.7955),
+        ("Kalawad Road / Amin Marg", 22.2855, 70.7725),
+        ("150 Feet Ring Road / Big Bazaar", 22.2825, 70.7615),
+        ("University Road / Indira Circle", 22.2925, 70.7785),
+        ("Race Course / Sadar", 22.3055, 70.8015),
+        ("Nana Mava / Mavdi", 22.2685, 70.7755),
+        ("Gondal Road / Bhaktinagar", 22.2755, 70.8085),
+        ("Dhebar Road / Astral", 22.2915, 70.8045),
+    ],
+}
+
+
+def resolve_place_name(city_name: str, lat: float | None, lng: float | None) -> str:
+    """Return the nearest known city district for a report location."""
+    if lat is None or lng is None:
+        return city_name
+
+    city_key = city_name.lower().split(",", 1)[0].strip()
+    places = CITY_PLACES.get(city_key, [])
+    if not places:
+        return city_name
+
+    def distance_sq(place: tuple[str, float, float]) -> float:
+        _, place_lat, place_lng = place
+        longitude_delta = (lng - place_lng) * 0.92
+        return (lat - place_lat) ** 2 + longitude_delta ** 2
+
+    nearest = min(places, key=distance_sq)
+    return nearest[0] if distance_sq(nearest) < 0.002 else f"{nearest[0]} Sector"
+
+
 def generate_pdf_report(
     city_name: str,
     business_type: str,
@@ -135,19 +202,12 @@ def generate_pdf_report(
     if selected_site:
         lat = selected_site.get("lat")
         lng = selected_site.get("lng")
-        h3_idx = selected_site.get("h3", "N/A")
         score_val = selected_site.get("score", 0)
         score_100 = selected_site.get("score100", round(score_val * 100))
 
         elements.append(Paragraph("Selected Site — Detailed Location Profile", h2_style))
 
-        # Try to get address via reverse geocoding (simplified - coordinates shown)
-        location_text = f"H3 Index: <b>{h3_idx}</b>"
-        if lat is not None and lng is not None:
-            location_text += f" | Coordinates: <b>{lat:.6f}° N, {lng:.6f}° E</b>"
-            # Note: For production, integrate a reverse geocoding service (Nominatim, Google Maps, etc.)
-            # to convert lat/lng to human-readable address.
-            location_text += "  <i>(Reverse geocoding available via OSM Nominatim / Google Maps API)</i>"
+        location_text = f"Place: <b>{resolve_place_name(city_name, lat, lng)}</b>"
 
         elements.append(Paragraph(location_text, body_style))
         elements.append(Spacer(1, 4))
@@ -226,7 +286,7 @@ def generate_pdf_report(
     table_data = [
         [
             Paragraph("<b>Rank</b>", body_style),
-            Paragraph("<b>H3 Index</b>", body_style),
+            Paragraph("<b>Place</b>", body_style),
             Paragraph("<b>Score</b>", body_style),
             Paragraph("<b>Demand</b>", body_style),
             Paragraph("<b>Accessibility</b>", body_style),
@@ -238,7 +298,7 @@ def generate_pdf_report(
 
     for i, s in enumerate(top_sites[:10]):
         rank_label = f"#{i+1}"
-        h3_short = s.get("h3", "")[:12] + "..."
+        place_name = resolve_place_name(city_name, s.get("lat"), s.get("lng"))
         sc = f"{s.get('score', 0):.1f}"
         dm = f"{s.get('sub_demand', 0):.0f}"
         ac = f"{s.get('sub_accessibility', 0):.0f}"
@@ -248,7 +308,7 @@ def generate_pdf_report(
 
         table_data.append([
             Paragraph(rank_label, body_style),
-            Paragraph(h3_short, body_style),
+            Paragraph(place_name, body_style),
             Paragraph(f"<b>{sc}</b>", body_style),
             Paragraph(dm, body_style),
             Paragraph(ac, body_style),
