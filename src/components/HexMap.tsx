@@ -1,10 +1,12 @@
-import { useEffect, useRef, useMemo, useState } from "react";
+import { useEffect, useRef, useMemo, useState, useCallback } from "react";
 import * as maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import type * as GeoJSON from "geojson";
 import type { ScoredHex } from "@/lib/sitescope/scoring";
 import { Layers, Plus, Minus, Crosshair, Users, Route, Store, ShieldAlert, Compass, Building2 } from "lucide-react";
 import { MapLayersPanel, type LayerItem } from "./MapLayersPanel";
+
+const BASE_URL = import.meta.env["VITE_API_URL"] || "http://localhost:8000";
 
 function scoreToColor(score: number): string {
   const s = Math.max(0, Math.min(1, Number.isFinite(score) ? score : 0.5));
@@ -33,10 +35,81 @@ interface HexMapProps {
   mapStyleType?: "map" | "satellite" | "hybrid";
   onStyleChange?: (style: "map" | "satellite" | "hybrid") => void;
   competitors?: { id: string; name: string; lngLat: [number, number] }[];
+  cityId: string;
   layersList?: LayerItem[];
   onToggleLayer?: (id: string) => void;
   onLayerOpacity?: (id: string, opacity: number) => void;
 }
+
+interface LayerStyle {
+  type: "fill" | "line" | "circle" | "symbol";
+  paint: Record<string, any>;
+  layout?: Record<string, any>;
+}
+
+const LAYER_STYLES: Record<string, LayerStyle> = {
+  landuse: {
+    type: "fill",
+    paint: {
+      "fill-color": [
+        "match",
+        ["get", "landuse"],
+        "residential", "#fef3c7",
+        "commercial", "#fecaca",
+        "industrial", "#e5e7eb",
+        "mixed", "#fde68a",
+        "forest", "#86efac",
+        "agricultural", "#fef08a",
+        "water", "#93c5fd",
+        "#e5e7eb"
+      ],
+      "fill-opacity": 0.6,
+      "fill-outline-color": "#9ca3af",
+    },
+  },
+  roads: {
+    type: "line",
+    paint: {
+      "line-color": "#9ca3af",
+      "line-width": 0.8,
+      "line-opacity": 0.8,
+    },
+  },
+  transit: {
+    type: "line",
+    paint: {
+      "line-color": "#38bdf8",
+      "line-width": 1.2,
+      "line-opacity": 0.9,
+      "line-dasharray": [4, 4],
+    },
+  },
+  waterways: {
+    type: "line",
+    paint: {
+      "line-color": "#0ea5e9",
+      "line-width": 1.0,
+      "line-opacity": 0.7,
+    },
+  },
+  pois: {
+    type: "circle",
+    paint: {
+      "circle-radius": 3,
+      "circle-color": "#f43f5e",
+      "circle-opacity": 0.8,
+      "circle-stroke-width": 0.5,
+      "circle-stroke-color": "#ffffff",
+    },
+  },
+  flood: {
+    type: "fill",
+    paint: {
+      "fill-color": "#f97316",
+      "fill-opacity": 0.4,
+    },
+  },
+};
 
 export function HexMap({
   scored,
@@ -47,6 +120,7 @@ export function HexMap({
   mapStyleType = "map",
   onStyleChange,
   competitors = [],
+  cityId,
   layersList = [
     { id: "population", name: "Population & Demographics", enabled: true, opacity: 80, coverage: "99% coverage", icon: <Users className="w-3.5 h-3.5 text-blue-500" /> },
     { id: "roads", name: "Transportation & Transit", enabled: true, opacity: 70, coverage: "96% coverage", icon: <Route className="w-3.5 h-3.5 text-emerald-500" /> },
@@ -66,9 +140,7 @@ export function HexMap({
   const [activeMapType, setActiveMapType] = useState<"map" | "satellite" | "hybrid">(mapStyleType);
   const [isLayersOpen, setIsLayersOpen] = useState(false);
 
-  // Fallback local layer state if parent didn't provide
   const [internalLayers, setInternalLayers] = useState<LayerItem[]>(layersList);
-
   const activeLayers = layersList || internalLayers;
 
   const handleToggle = (id: string) => {
@@ -116,6 +188,138 @@ export function HexMap({
     setActiveMapType(type);
     onStyleChange?.(type);
   }
+
+  // Load overlay layers from backend and add to map
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !cityId) return;
+
+    const loadOverlayLayers = async () => {
+      try {
+        const res = await fetch(`${BASE_URL}/cities/${cityId}/layers`);
+        if (!res.ok) return;
+        const layerNames = await res.json();
+        
+        for (const name of layerNames) {
+          const layerConfig = activeLayers.find(l => l.id === name);
+          if (!layerConfig) continue;
+
+          try {
+            const geoRes = await fetch(`${BASE_URL}/cities/${cityId}/layers/${name}`);
+            if (!geoRes.ok) continue;
+            const geojsonData = await geoRes.json();
+
+            const sourceId = `overlay-${name}`;
+            const layerId = `overlay-${name}-layer`;
+
+            // Remove existing if present
+            if (map.getLayer(layerId)) map.removeLayer(layerId);
+            if (map.getSource(sourceId)) map.removeSource(sourceId);
+
+            // Add source
+            map.addSource(sourceId, { type: "geojson", data: geojsonData });
+
+            // Get style config
+            const style = LAYER_STYLES[name] || { type: "fill" as const, paint: { "fill-color": "#888", "fill-opacity": 0.5 } };
+
+            // Add layer if enabled
+            if (layerConfig.enabled) {
+              const basePaint = { ...style.paint };
+              // Only apply opacity to supported paint properties for this layer type
+              if (style.type === "fill" || style.type === "circle") {
+                const opacityKey = style.type === "fill" ? "fill-opacity" : "circle-opacity";
+                const defaultOpacity = style.type === "fill" ? 0.5 : 0.8;
+                basePaint[opacityKey] = (basePaint[opacityKey] || defaultOpacity) * (layerConfig.opacity / 100);
+              } else if (style.type === "line") {
+                basePaint["line-opacity"] = (basePaint["line-opacity"] || 0.8) * (layerConfig.opacity / 100);
+              }
+
+              const layerSpec = {
+                id: layerId,
+                type: style.type,
+                source: sourceId,
+                paint: basePaint,
+layout: style.layout ?? {},
+              } as maplibregl.AddLayerObject;
+              map.addLayer(layerSpec);
+            }
+          } catch (e) {
+            console.warn(`Failed to load layer ${name}:`, e);
+          }
+        }
+      } catch (e) {
+        console.warn("Failed to load overlay layers:", e);
+      }
+    };
+
+    if (map.isStyleLoaded()) {
+      loadOverlayLayers();
+    } else {
+      map.once("load", loadOverlayLayers);
+    }
+  }, [activeMapType, cityId, activeLayers]);
+
+  // Sync layer visibility and opacity to map when activeLayers changes
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !cityId) return;
+
+    const syncLayers = async () => {
+      for (const layer of activeLayers) {
+        const sourceId = `overlay-${layer.id}`;
+        const layerId = `overlay-${layer.id}-layer`;
+        const style = LAYER_STYLES[layer.id];
+
+        if (!style) continue;
+
+        // Skip if source doesn't exist yet (initial load effect will handle it)
+        if (!map.getSource(sourceId)) continue;
+
+        if (layer.enabled) {
+          // Add or show layer
+          if (!map.getLayer(layerId)) {
+            const basePaint = { ...style.paint };
+            if (style.type === "fill" || style.type === "circle") {
+              const opacityKey = style.type === "fill" ? "fill-opacity" : "circle-opacity";
+              const defaultOpacity = style.type === "fill" ? 0.5 : 0.8;
+              basePaint[opacityKey] = (basePaint[opacityKey] || defaultOpacity) * (layer.opacity / 100);
+            } else if (style.type === "line") {
+              basePaint["line-opacity"] = (basePaint["line-opacity"] || 0.8) * (layer.opacity / 100);
+            }
+
+            const layerSpec = {
+              id: layerId,
+              type: style.type,
+              source: sourceId,
+              paint: basePaint,
+              layout: style.layout,
+            } as maplibregl.AddLayerObject;
+            map.addLayer(layerSpec);
+          } else {
+            map.setLayoutProperty(layerId, "visibility", "visible");
+            if (style.type === "fill" || style.type === "circle") {
+              const opacityKey = style.type === "fill" ? "fill-opacity" : "circle-opacity";
+              const defaultOpacity = style.type === "fill" ? 0.5 : 0.8;
+              map.setPaintProperty(layerId, opacityKey, (style.paint[opacityKey] || defaultOpacity) * (layer.opacity / 100));
+            } else if (style.type === "line") {
+              map.setPaintProperty(layerId, "line-opacity", (style.paint["line-opacity"] || 0.8) * (layer.opacity / 100));
+            }
+          }
+        } else {
+          // Hide layer
+          if (map.getLayer(layerId)) {
+            map.setLayoutProperty(layerId, "visibility", "none");
+          }
+        }
+      }
+    };
+
+    if (map.isStyleLoaded()) {
+      syncLayers();
+    } else {
+      map.once("load", syncLayers);
+    }
+  }, [activeLayers, cityId]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -223,7 +427,6 @@ export function HexMap({
     markersRef.current.forEach((m) => m.remove());
     markersRef.current = [];
 
-    // Selected Pin Marker
     const selHex = hexList.find((h) => h.h3 === selH3);
     if (selHex) {
       const el = document.createElement("div");
@@ -242,7 +445,6 @@ export function HexMap({
       );
     }
 
-    // High Potential Hotspot Badge
     const topHotspot = [...hexList].sort((a, b) => b.score - a.score)[0];
     if (topHotspot && topHotspot.h3 !== selH3) {
       const el = document.createElement("div");
@@ -257,7 +459,6 @@ export function HexMap({
       );
     }
 
-    // Underserved Area badge
     const underservedHex = hexList.find((h) => h.underserved);
     if (underservedHex && underservedHex.h3 !== selH3 && underservedHex.h3 !== topHotspot?.h3) {
       const el = document.createElement("div");
@@ -272,7 +473,6 @@ export function HexMap({
       );
     }
 
-    // Competitor Markers
     competitors.slice(0, 10).forEach((c) => {
       const el = document.createElement("div");
       el.innerHTML = `

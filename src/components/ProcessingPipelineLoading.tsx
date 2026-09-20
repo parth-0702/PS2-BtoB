@@ -77,10 +77,10 @@ export function ProcessingPipelineLoading({ city, config, onComplete }: Processi
           config: {
             preset: "retail_store",
             weights: {
-              demand: (config?.weights?.population ?? 0.25) * 100,
-              accessibility: (config?.weights?.accessibility ?? 0.20) * 100,
-              competition: (config?.weights?.competition ?? 0.20) * 100,
-              landuse: (config?.weights?.complementary ?? 0.15) * 100,
+              demand: (config?.weights?.["population"] ?? 0.25) * 100,
+              accessibility: (config?.weights?.["accessibility"] ?? 0.20) * 100,
+              competition: (config?.weights?.["competition"] ?? 0.20) * 100,
+              landuse: (config?.weights?.["complementary"] ?? 0.15) * 100,
               risk: 15.0,
             },
           },
@@ -110,7 +110,7 @@ export function ProcessingPipelineLoading({ city, config, onComplete }: Processi
 
           for (const block of lines) {
             const dataMatch = block.match(/^data:\s*(.+)$/m);
-            if (!dataMatch) continue;
+            if (!dataMatch || !dataMatch[1]) continue;
 
             try {
               const eventData = JSON.parse(dataMatch[1]);

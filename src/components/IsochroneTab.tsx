@@ -151,7 +151,7 @@ export function IsochroneTab({
                 <span className="text-sm font-semibold" style={{ color: MINUTE_COLORS[band.minutes] }}>
                   {band.minutes} min {mode === "walk" ? "walk" : "drive"}
                 </span>
-                <span className="text-xs text-slate-400">{band.radius_km.toFixed(1)} km radius</span>
+                <span className="text-xs text-slate-400">{band.radius_km?.toFixed(1) ?? "~"} km radius</span>
               </div>
               <div className="grid grid-cols-2 gap-2 text-xs">
                 <div className="flex items-center gap-1.5">

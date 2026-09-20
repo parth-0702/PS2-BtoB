@@ -283,12 +283,12 @@ export function resolveAnswers(answers: Answers): ResolveResult {
   normalise(config.weights);
 
   // Compute 0-100 MCDA factor weights
-  const pop = config.weights.population ?? 0.2;
-  const foot = config.weights.footfall ?? 0.2;
-  const access = config.weights.accessibility ?? 0.15;
-  const compWeight = config.weights.competition ?? 0.15;
-  const compl = config.weights.complementary ?? 0.15;
-  const rent = config.weights.rent ?? 0.15;
+  const pop = config.weights["population"] ?? 0.2;
+  const foot = config.weights["footfall"] ?? 0.2;
+  const access = config.weights["accessibility"] ?? 0.15;
+  const compWeight = config.weights["competition"] ?? 0.15;
+  const compl = config.weights["complementary"] ?? 0.15;
+  const rent = config.weights["rent"] ?? 0.15;
 
   const wDemand = Math.round((pop + foot) * 55);
   const wAccess = Math.round(access * 100);

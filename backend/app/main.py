@@ -13,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 load_dotenv(Path(__file__).parent.parent / ".env", override=False)
 
-from app.routers import cities, score, analysis, ai  # noqa: E402
+from app.routers import cities, score, analysis, ai, upload  # noqa: E402
 
 app = FastAPI(
     title="SiteScope API",
@@ -39,6 +39,7 @@ app.include_router(cities.router)
 app.include_router(score.router)
 app.include_router(analysis.router)
 app.include_router(ai.router)
+app.include_router(upload.router)
 
 
 @app.get("/")

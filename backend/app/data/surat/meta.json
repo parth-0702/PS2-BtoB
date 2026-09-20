@@ -1,0 +1,50 @@
+{
+  "id": "surat",
+  "name": "Surat",
+  "region": "Gujarat, India",
+  "center": [
+    72.8311,
+    21.1702
+  ],
+  "hex_count": 631,
+  "resolution": 8,
+  "blurb": "Diamond and textile hub on the Tapi, dense core with fast-growing western suburbs.",
+  "layers": [
+    {
+      "id": "population",
+      "label": "Population & Demographics",
+      "coverage": 0.97,
+      "synthetic": true,
+      "source": "Synthetic census proxy"
+    },
+    {
+      "id": "transportation",
+      "label": "Transportation",
+      "coverage": 0.95,
+      "synthetic": true,
+      "source": "Synthetic road/transit graph"
+    },
+    {
+      "id": "pois",
+      "label": "Points of Interest",
+      "coverage": 0.89,
+      "synthetic": true,
+      "source": "Synthetic POI dataset"
+    },
+    {
+      "id": "landuse",
+      "label": "Land Use & Zoning",
+      "coverage": 0.93,
+      "synthetic": true,
+      "source": "Synthetic zoning"
+    },
+    {
+      "id": "risk",
+      "label": "Environmental & Risk",
+      "coverage": 0.72,
+      "synthetic": true,
+      "source": "Synthetic flood/AQI"
+    }
+  ],
+  "synthetic": true
+}

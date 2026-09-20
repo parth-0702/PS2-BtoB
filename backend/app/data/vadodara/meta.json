@@ -1,0 +1,50 @@
+{
+  "id": "vadodara",
+  "name": "Vadodara",
+  "region": "Gujarat, India",
+  "center": [
+    73.1812,
+    22.3072
+  ],
+  "hex_count": 397,
+  "resolution": 8,
+  "blurb": "Compact cultural city with a strong student population and a steady commercial spine.",
+  "layers": [
+    {
+      "id": "population",
+      "label": "Population & Demographics",
+      "coverage": 0.97,
+      "synthetic": true,
+      "source": "Synthetic census proxy"
+    },
+    {
+      "id": "transportation",
+      "label": "Transportation",
+      "coverage": 0.95,
+      "synthetic": true,
+      "source": "Synthetic road/transit graph"
+    },
+    {
+      "id": "pois",
+      "label": "Points of Interest",
+      "coverage": 0.89,
+      "synthetic": true,
+      "source": "Synthetic POI dataset"
+    },
+    {
+      "id": "landuse",
+      "label": "Land Use & Zoning",
+      "coverage": 0.93,
+      "synthetic": true,
+      "source": "Synthetic zoning"
+    },
+    {
+      "id": "risk",
+      "label": "Environmental & Risk",
+      "coverage": 0.72,
+      "synthetic": true,
+      "source": "Synthetic flood/AQI"
+    }
+  ],
+  "synthetic": true
+}

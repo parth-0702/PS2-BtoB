@@ -252,6 +252,7 @@ class ReportRequest(BaseModel):
     business_type: str = "Retail Store"
     config: ScoringConfig = ScoringConfig()
     ai_explanation: dict[str, Any] | None = None
+    h3: str | None = None
 
 
 @router.post("/report")
@@ -267,6 +268,13 @@ def export_pdf_report(req: ReportRequest):
         meta = _load_meta(req.city_id)
         city_name = meta.get("name", req.city_id.title())
 
+        # Get selected site details
+        selected_site = None
+        if req.h3:
+            selected_row = scored_df[scored_df["h3"] == req.h3]
+            if not selected_row.empty:
+                selected_site = selected_row.iloc[0].to_dict()
+
         pdf_bytes = generate_pdf_report(
             city_name=city_name,
             business_type=req.business_type,
@@ -274,6 +282,7 @@ def export_pdf_report(req: ReportRequest):
             top_sites=top_sites,
             ai_explanation=req.ai_explanation,
             provenance_meta=meta,
+            selected_site=selected_site,
         )
 
         return Response(

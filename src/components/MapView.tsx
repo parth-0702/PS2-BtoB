@@ -306,7 +306,7 @@ export function MapView({ onBack, onReset }: MapViewProps) {
       setTimeout(() => setToastMessage(null), 3000);
     } catch {
       const currentBusiness = BUSINESS_PRESETS.find((p) => p.id === businessType)?.preset ?? "Healthcare";
-      exportPDF(activeCity.name, currentBusiness, top5.slice(0, 3), liveConfigState.weights, top5[0]?.score ? Math.round(top5[0].score * 100) : 80);
+      exportPDF(activeCity.name, currentBusiness, top5.slice(0, 3), { ...liveConfigState.weights } as Record<string, number>, top5[0]?.score ? Math.round(top5[0].score * 100) : 80);
     }
   }, [activeCity, businessType, liveConfigState, top5]);
 
@@ -514,6 +514,7 @@ export function MapView({ onBack, onReset }: MapViewProps) {
               selectedH3={activeSelectedHex?.h3 ?? null}
               topSitesList={top5}
               competitors={cityData?.competitors || []}
+              cityId={activeCity.id}
             />
           </div>
 

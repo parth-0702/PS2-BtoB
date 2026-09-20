@@ -25,6 +25,7 @@ def generate_pdf_report(
     top_sites: list[dict[str, Any]],
     ai_explanation: dict[str, Any] | None = None,
     provenance_meta: dict[str, Any] | None = None,
+    selected_site: dict[str, Any] | None = None,
 ) -> bytes:
     """
     Generates a high-quality PDF report and returns the raw bytes.
@@ -129,6 +130,70 @@ def generate_pdf_report(
     )
     elements.append(summary_table)
     elements.append(Spacer(1, 14))
+
+    # Selected Site Location & Address
+    if selected_site:
+        lat = selected_site.get("lat")
+        lng = selected_site.get("lng")
+        h3_idx = selected_site.get("h3", "N/A")
+        score_val = selected_site.get("score", 0)
+        score_100 = selected_site.get("score100", round(score_val * 100))
+
+        elements.append(Paragraph("Selected Site — Detailed Location Profile", h2_style))
+
+        # Try to get address via reverse geocoding (simplified - coordinates shown)
+        location_text = f"H3 Index: <b>{h3_idx}</b>"
+        if lat is not None and lng is not None:
+            location_text += f" | Coordinates: <b>{lat:.6f}° N, {lng:.6f}° E</b>"
+            # Note: For production, integrate a reverse geocoding service (Nominatim, Google Maps, etc.)
+            # to convert lat/lng to human-readable address.
+            location_text += "  <i>(Reverse geocoding available via OSM Nominatim / Google Maps API)</i>"
+
+        elements.append(Paragraph(location_text, body_style))
+        elements.append(Spacer(1, 4))
+
+        # Site score highlight
+        score_color = "#059669" if score_100 >= 80 else "#0f766e" if score_100 >= 65 else "#0891b2" if score_100 >= 50 else "#d97706" if score_100 >= 35 else "#dc2626"
+        score_label = (
+            "Strong Opportunity" if score_100 >= 80 else
+            "Good Potential" if score_100 >= 65 else
+            "Moderate Fit" if score_100 >= 50 else
+            "Marginal Fit" if score_100 >= 35 else
+            "Low Suitability"
+        )
+        elements.append(
+            Paragraph(
+                f"<b>Site Readiness Score:</b> <font color='{score_color}'><b>{score_100} / 100</b></font> — {score_label}",
+                body_style,
+            )
+        )
+        elements.append(Spacer(1, 6))
+
+        # Sub-scores breakdown if available
+        sub_keys = [
+            ("sub_demand", "Demand"),
+            ("sub_accessibility", "Transit Accessibility"),
+            ("sub_competition", "Competition"),
+            ("sub_complementary", "Complementary"),
+            ("sub_landuse", "Land Use"),
+            ("sub_risk", "Risk"),
+        ]
+        sub_rows = []
+        for key, label in sub_keys:
+            if key in selected_site:
+                sub_rows.append([Paragraph(f"<b>{label}:</b>", body_style), Paragraph(f"{selected_site[key]:.1f} / 100", body_style)])
+        if sub_rows:
+            sub_table = Table(sub_rows, colWidths=[180, 100])
+            sub_table.setStyle(
+                TableStyle([
+                    ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f0fdfa")),
+                    ("BOX", (0, 0), (-1, -1), 1, colors.HexColor("#a7f3d0")),
+                    ("INNERGRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#d1fae5")),
+                    ("PADDING", (0, 0), (-1, -1), 4),
+                ])
+            )
+            elements.append(sub_table)
+            elements.append(Spacer(1, 10))
 
     # AI Strategic Insights
     if ai_explanation:
